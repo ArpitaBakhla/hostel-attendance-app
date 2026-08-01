@@ -2,7 +2,9 @@ import {
   startRegistration,
   startAuthentication,
   browserSupportsWebAuthn,
+  WebAuthnError,
 } from '@simplewebauthn/browser';
+import { getErrorMessage } from '@/lib/errors';
 
 function base64url(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))
@@ -60,20 +62,74 @@ export async function verifyFingerprint(credentialId: string) {
   return startAuthentication({ optionsJSON: options });
 }
 
-export async function verifyFingerprintOrDemo(credentialId?: string): Promise<boolean> {
+export type FingerprintFailure =
+  | 'unsupported'
+  | 'not_enrolled'
+  | 'cancelled'
+  | 'failed';
+
+export type FingerprintResult =
+  | { verified: true }
+  | { verified: false; reason: FingerprintFailure; message: string };
+
+function isUserCancellation(error: unknown): boolean {
+  if (error instanceof WebAuthnError) {
+    // Cancellations surface either as an aborted ceremony or as a passthrough of the DOM exception.
+    return (
+      error.code === 'ERROR_CEREMONY_ABORTED' ||
+      isUserCancellation((error as { cause?: unknown }).cause)
+    );
+  }
+  return (
+    error instanceof Error &&
+    (error.name === 'NotAllowedError' || error.name === 'AbortError')
+  );
+}
+
+export async function verifyFingerprintOrDemo(
+  credentialId?: string,
+): Promise<FingerprintResult> {
   if (!isWebAuthnSupported()) {
-    return import.meta.env.DEV;
+    if (import.meta.env.DEV) {
+      console.warn('[webauthn] WebAuthn unsupported; accepting check-in via dev fallback.');
+      return { verified: true };
+    }
+    return {
+      verified: false,
+      reason: 'unsupported',
+      message: 'This device does not support fingerprint authentication.',
+    };
   }
 
   if (!credentialId) {
-    return false;
+    return {
+      verified: false,
+      reason: 'not_enrolled',
+      message: 'No fingerprint is enrolled on this account. Enroll in Settings first.',
+    };
   }
 
   try {
     await verifyFingerprint(credentialId);
-    return true;
-  } catch {
-    return import.meta.env.DEV;
+    return { verified: true };
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('[webauthn] Verification failed; accepting via dev fallback.', error);
+      return { verified: true };
+    }
+
+    console.error('[webauthn] Fingerprint verification failed.', error);
+    return isUserCancellation(error)
+      ? {
+          verified: false,
+          reason: 'cancelled',
+          message: 'Fingerprint verification was cancelled.',
+        }
+      : {
+          verified: false,
+          reason: 'failed',
+          message: getErrorMessage(error, 'Fingerprint verification failed.'),
+        };
   }
 }
 

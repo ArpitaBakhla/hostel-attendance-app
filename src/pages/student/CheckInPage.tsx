@@ -3,6 +3,7 @@ import { TopAppBar } from '@/components/student/TopAppBar';
 import { BottomNav } from '@/components/student/BottomNav';
 import { AlertBanner, PageShell } from '@/components/ui';
 import { demoStore } from '@/lib/store';
+import { getErrorMessage } from '@/lib/errors';
 import { getCurrentPosition, isWithinGeofence } from '@/lib/geo';
 import { getTimeWindowStatus } from '@/lib/time-window';
 import { verifyFingerprintOrDemo } from '@/lib/webauthn';
@@ -52,12 +53,13 @@ export function CheckInPage({ session }: CheckInPageProps) {
           ? 'Inside hostel boundary'
           : 'Outside hostel boundary',
       );
-    } catch {
+    } catch (error) {
+      console.error('[check-in] Unable to resolve location.', error);
       setLocationVerified(import.meta.env.DEV);
       setLocationLabel(
         import.meta.env.DEV
           ? 'Location unavailable (demo mode)'
-          : 'Enable location to check in',
+          : getErrorMessage(error, 'Enable location to check in'),
       );
     }
   }, [hostel]);
@@ -84,13 +86,17 @@ export function CheckInPage({ session }: CheckInPageProps) {
     setMessage(null);
 
     try {
-      const verified = await verifyFingerprintOrDemo(student.webauthnCredentialId);
-      setFingerprintReady(verified);
-      if (!verified) {
-        setMessage({ type: 'error', text: 'Fingerprint verification failed. Try again or report a device issue.' });
+      const result = await verifyFingerprintOrDemo(student.webauthnCredentialId);
+      setFingerprintReady(result.verified);
+      if (!result.verified) {
+        setMessage({ type: 'error', text: result.message });
       }
-    } catch {
-      setMessage({ type: 'error', text: 'Fingerprint verification cancelled or failed.' });
+    } catch (error) {
+      console.error('[check-in] Fingerprint verification threw unexpectedly.', error);
+      setMessage({
+        type: 'error',
+        text: getErrorMessage(error, 'Fingerprint verification failed. Try again or report a device issue.'),
+      });
       setFingerprintReady(false);
     } finally {
       setLoading(false);
@@ -112,10 +118,15 @@ export function CheckInPage({ session }: CheckInPageProps) {
     setMessage(null);
 
     try {
-      const verified = fingerprintReady || (await verifyFingerprintOrDemo(student.webauthnCredentialId));
+      let verified = fingerprintReady;
       if (!verified) {
-        setMessage({ type: 'error', text: 'Fingerprint verification required.' });
-        return;
+        const result = await verifyFingerprintOrDemo(student.webauthnCredentialId);
+        if (!result.verified) {
+          setMessage({ type: 'error', text: result.message });
+          return;
+        }
+        verified = true;
+        setFingerprintReady(true);
       }
 
       let lat = hostel.centerLat;
@@ -125,9 +136,13 @@ export function CheckInPage({ session }: CheckInPageProps) {
         const position = await getCurrentPosition();
         lat = position.coords.latitude;
         lon = position.coords.longitude;
-      } catch {
+      } catch (error) {
+        console.error('[check-in] Unable to resolve location for check-in.', error);
         if (!import.meta.env.DEV) {
-          setMessage({ type: 'error', text: 'Location access is required for check-in.' });
+          setMessage({
+            type: 'error',
+            text: getErrorMessage(error, 'Location access is required for check-in.'),
+          });
           return;
         }
       }
@@ -138,9 +153,10 @@ export function CheckInPage({ session }: CheckInPageProps) {
         text: result.message,
       });
     } catch (error) {
+      console.error('[check-in] Check-in failed.', error);
       setMessage({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Check-in failed.',
+        text: getErrorMessage(error, 'Check-in failed.'),
       });
     } finally {
       setLoading(false);
