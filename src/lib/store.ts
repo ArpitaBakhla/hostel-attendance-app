@@ -118,14 +118,43 @@ function defaultData(): AppData {
   };
 }
 
+function parseJson<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as unknown;
+    return value !== null && typeof value === 'object' ? (value as T) : null;
+  } catch {
+    return null;
+  }
+}
+
 function loadData(): AppData {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
+  const stored = parseJson<AppData>(localStorage.getItem(STORAGE_KEY));
+  if (!stored || !Array.isArray(stored.students) || !Array.isArray(stored.hostels)) {
     const data = defaultData();
     saveData(data);
     return data;
   }
-  return JSON.parse(raw) as AppData;
+  return stored;
+}
+
+const MAX_TEXT_LENGTH = 500;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function requireText(value: string, field: string, maxLength = MAX_TEXT_LENGTH): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error(`${field} is required.`);
+  if (trimmed.length > maxLength) {
+    throw new Error(`${field} must be at most ${maxLength} characters.`);
+  }
+  return trimmed;
+}
+
+function requireDate(value: string, field: string): string {
+  if (!DATE_PATTERN.test(value) || Number.isNaN(Date.parse(`${value}T12:00:00`))) {
+    throw new Error(`${field} must be a valid YYYY-MM-DD date.`);
+  }
+  return value;
 }
 
 function saveData(data: AppData): void {
@@ -301,7 +330,9 @@ export const demoStore = {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
 
-    const session = JSON.parse(raw) as SessionUser;
+    const session = parseJson<SessionUser>(raw);
+    if (!session?.student) return null;
+
     const student = loadData().students.find((s) => s.id === session.student.id);
     if (!student) return null;
 
@@ -313,7 +344,9 @@ export const demoStore = {
   },
 
   loginWarden(email: string, password: string): WardenSession | null {
-    if (email !== DEFAULT_WARDEN.email || password !== 'warden123') return null;
+    const demoPassword = import.meta.env.VITE_DEMO_WARDEN_PASSWORD;
+    if (!isDemoMode() || !demoPassword) return null;
+    if (email !== DEFAULT_WARDEN.email || password !== demoPassword) return null;
 
     const data = loadData();
     const session: WardenSession = {
@@ -325,8 +358,7 @@ export const demoStore = {
   },
 
   getWardenSession(): WardenSession | null {
-    const raw = localStorage.getItem(WARDEN_SESSION_KEY);
-    return raw ? (JSON.parse(raw) as WardenSession) : null;
+    return parseJson<WardenSession>(localStorage.getItem(WARDEN_SESSION_KEY));
   },
 
   logoutWarden(): void {
@@ -357,10 +389,10 @@ export const demoStore = {
     const student: Student = {
       id: uid(),
       hostelId: input.hostelId,
-      name: input.name,
-      rollNumber: input.rollNumber,
-      roomNo: input.roomNo,
-      phoneNumber: input.phoneNumber,
+      name: requireText(input.name, 'Name', 120),
+      rollNumber: requireText(input.rollNumber, 'Roll number', 40),
+      roomNo: requireText(input.roomNo, 'Room number', 40),
+      phoneNumber: requireText(input.phoneNumber, 'Phone number', 20),
       secondaryContactNumber: input.secondaryContactNumber || undefined,
       overrideCount: 0,
       onboardedBy: input.onboardedBy,
@@ -473,13 +505,17 @@ export const demoStore = {
     const student = getStudent(data, studentId);
     const hostel = getHostel(data, student.hostelId);
 
+    requireDate(startDate, 'Start date');
+    requireDate(endDate, 'End date');
+    if (endDate < startDate) throw new Error('End date must not be before start date.');
+
     const leave: LeaveRequest = {
       id: uid(),
       studentId,
       hostelId: student.hostelId,
       startDate,
       endDate,
-      reason,
+      reason: requireText(reason, 'Reason'),
       status: 'pending',
       isRetroactive: startDate < todayInTimezone(hostel.timezone),
       submittedAt: new Date().toISOString(),

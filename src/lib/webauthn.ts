@@ -61,11 +61,7 @@ export async function verifyFingerprint(credentialId: string) {
 }
 
 export async function verifyFingerprintOrDemo(credentialId?: string): Promise<boolean> {
-  if (!isWebAuthnSupported()) {
-    return import.meta.env.DEV;
-  }
-
-  if (!credentialId) {
+  if (!isWebAuthnSupported() || !credentialId) {
     return false;
   }
 
@@ -73,16 +69,13 @@ export async function verifyFingerprintOrDemo(credentialId?: string): Promise<bo
     await verifyFingerprint(credentialId);
     return true;
   } catch {
-    return import.meta.env.DEV;
+    return false;
   }
 }
 
 export async function enrollFingerprintOrDemo(userId: string, userName: string) {
   if (!isWebAuthnSupported()) {
-    return {
-      credentialId: `demo-${userId}`,
-      publicKey: 'demo-public-key',
-    };
+    throw new Error('This device or browser does not support fingerprint enrollment.');
   }
 
   return enrollFingerprint(userId, userName);
