@@ -1,39 +1,12 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { AlertBanner, FormField, GlassButton, GlassPanel, PageShell, TextInput } from '@/components/ui';
+import { Link } from 'react-router-dom';
+import { FormField, GlassButton, GlassPanel, PageShell, TextInput } from '@/components/ui';
 import { OtpForm } from '@/components/OtpForm';
-import { demoStore } from '@/lib/store';
-import type { SessionUser, Student } from '@/types';
+import { api } from '@/lib/api';
 
-interface StudentLoginPageProps {
-  onLogin: (session: SessionUser) => void;
-}
-
-export function StudentLoginPage({ onLogin }: StudentLoginPageProps) {
-  const navigate = useNavigate();
+export function StudentLoginPage() {
   const [phone, setPhone] = useState('');
-  const [student, setStudent] = useState<Student | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleContinue = () => {
-    const match = demoStore.findStudentByPhone(phone);
-    if (!match) {
-      setError('No student is registered with this number. Ask your warden to add you.');
-      return;
-    }
-    setError(null);
-    setStudent(match);
-  };
-
-  const handleVerified = () => {
-    const session = demoStore.loginStudent(phone);
-    if (!session) {
-      setError('Could not start your session. Try again.');
-      return;
-    }
-    onLogin(session);
-    navigate(demoStore.isEnrolled(session.student) ? '/student/check-in' : '/student/enroll');
-  };
+  const [submitted, setSubmitted] = useState(false);
 
   return (
     <PageShell>
@@ -48,9 +21,7 @@ export function StudentLoginPage({ onLogin }: StudentLoginPageProps) {
             </p>
           </div>
 
-          {error && <AlertBanner type="error" message={error} />}
-
-          {!student ? (
+          {!submitted ? (
             <>
               <FormField label="Phone number">
                 <TextInput
@@ -61,25 +32,34 @@ export function StudentLoginPage({ onLogin }: StudentLoginPageProps) {
                   className="bg-surface-container text-on-surface"
                 />
               </FormField>
-              <GlassButton onClick={handleContinue} disabled={!phone.trim()}>
+              <GlassButton onClick={() => setSubmitted(true)} disabled={!phone.trim()}>
                 Continue
               </GlassButton>
             </>
           ) : (
             <OtpForm
-              studentId={student.id}
-              purpose="registration"
-              description={`Hi ${student.name}, we'll text a code to your registered number to verify it's you.`}
-              onVerified={handleVerified}
+              phoneNumber={phone.trim()}
+              purpose="login"
+              description="We'll text a code to your registered number."
+              submitLabel="Sign in"
+              onVerify={(challengeId, code) => api.verifyOtpAndSignIn(challengeId, code)}
             />
           )}
 
-          <Link
-            to="/warden/login"
-            className="text-center font-[family-name:var(--font-label-md)] text-sm text-primary underline"
-          >
-            Warden sign in
-          </Link>
+          <div className="flex flex-col gap-2 text-center">
+            <Link
+              to="/student/malfunction"
+              className="font-[family-name:var(--font-label-md)] text-sm text-primary underline"
+            >
+              Phone broken or lost? Report a device problem
+            </Link>
+            <Link
+              to="/warden/login"
+              className="font-[family-name:var(--font-label-md)] text-sm text-on-surface-variant underline"
+            >
+              Warden sign in
+            </Link>
+          </div>
         </GlassPanel>
       </main>
     </PageShell>

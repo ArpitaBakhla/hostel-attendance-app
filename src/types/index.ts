@@ -18,8 +18,8 @@ export interface HostelCenter {
 }
 
 export interface Profile {
+  /** Equals the auth user id. */
   id: string;
-  userId: string;
   hostelId: string;
   role: UserRole;
   fullName: string;
@@ -105,6 +105,7 @@ export interface GeoLocation {
 export interface SessionUser {
   profile: Profile;
   student: Student;
+  hostel: HostelCenter;
 }
 
 export interface WardenSession {
@@ -121,19 +122,29 @@ export interface DashboardStats {
   total: number;
 }
 
-/** A pending OTP challenge (registration, self-report, device change). */
+export type MalfunctionTier = 'tier1' | 'tier2' | 'tier3';
+
+/** malfunction_reports */
+export interface MalfunctionReport {
+  id: string;
+  studentId: string;
+  hostelId: string;
+  reportDate: string;
+  tier: MalfunctionTier;
+  reason: string;
+  otpVerified: boolean;
+  otpSentTo?: string;
+  /** Tier 3 only: the floor-mate who informed the warden. */
+  reportedByStudentId?: string;
+  status: RequestStatus;
+  wardenId?: string;
+  createdAt: string;
+  decidedAt?: string;
+}
+
 export type OtpPurpose =
   | 'registration'
+  | 'login'
   | 'tier1_self_report'
   | 'tier2_secondary_contact'
   | 'device_change';
-
-export interface OtpChallenge {
-  id: string;
-  studentId: string;
-  purpose: OtpPurpose;
-  sentTo: string;
-  code: string;
-  expiresAt: string;
-  consumed: boolean;
-}

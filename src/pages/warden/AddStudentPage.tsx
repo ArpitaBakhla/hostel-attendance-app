@@ -8,12 +8,7 @@ import {
   PageShell,
   TextInput,
 } from '@/components/ui';
-import { demoStore } from '@/lib/store';
-import type { WardenSession } from '@/types';
-
-interface AddStudentPageProps {
-  session: WardenSession;
-}
+import { api } from '@/lib/api';
 
 const EMPTY = {
   name: '',
@@ -23,10 +18,11 @@ const EMPTY = {
   secondaryContactNumber: '',
 };
 
-export function AddStudentPage({ session }: AddStudentPageProps) {
+export function AddStudentPage() {
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const setField = (key: keyof typeof EMPTY) => (event: React.ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -34,25 +30,26 @@ export function AddStudentPage({ session }: AddStudentPageProps) {
   const complete =
     form.name.trim() && form.rollNumber.trim() && form.roomNo.trim() && form.phoneNumber.trim();
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError(null);
     setSuccess(null);
+    setBusy(true);
     try {
-      const student = demoStore.addStudent({
-        hostelId: session.hostel.id,
+      await api.addStudent({
         name: form.name.trim(),
         rollNumber: form.rollNumber.trim(),
         roomNo: form.roomNo.trim(),
         phoneNumber: form.phoneNumber.trim(),
         secondaryContactNumber: form.secondaryContactNumber.trim() || undefined,
-        onboardedBy: session.profile.id,
       });
-      setForm(EMPTY);
       setSuccess(
-        `${student.name} added. They must verify ${student.phoneNumber} by OTP and enroll a fingerprint on their own device.`,
+        `${form.name.trim()} added. They must verify ${form.phoneNumber.trim()} by OTP and enroll a fingerprint on their own device.`,
       );
+      setForm(EMPTY);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add the student.');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -107,8 +104,8 @@ export function AddStudentPage({ session }: AddStudentPageProps) {
             />
           </FormField>
 
-          <GlassButton onClick={handleSubmit} disabled={!complete}>
-            Add student
+          <GlassButton onClick={handleSubmit} disabled={!complete || busy}>
+            {busy ? 'Adding…' : 'Add student'}
           </GlassButton>
         </GlassPanel>
       </main>

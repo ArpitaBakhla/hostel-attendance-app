@@ -68,6 +68,11 @@ export function getTimeWindowStatus(now = new Date(), timezone = 'Asia/Kolkata')
   };
 }
 
+/** The hostel-local date (YYYY-MM-DD) a night's logs belong to. */
+export function hostelToday(timezone = 'Asia/Kolkata'): string {
+  return todayInTimezone(timezone);
+}
+
 export function todayInTimezone(timezone = 'Asia/Kolkata'): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
