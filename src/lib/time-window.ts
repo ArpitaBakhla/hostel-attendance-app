@@ -22,7 +22,8 @@ export function getTimeWindowStatus(now = new Date(), timezone = 'Asia/Kolkata')
     hour12: false,
   });
   const parts = formatter.formatToParts(now);
-  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+  // en-IN renders midnight as hour 24, so normalise it back into 0-23.
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0) % 24;
   const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
   const second = Number(parts.find((p) => p.type === 'second')?.value ?? 0);
   const totalMinutes = hour * 60 + minute;
