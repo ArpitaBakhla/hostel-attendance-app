@@ -18,8 +18,10 @@ import {
   datesBetween,
   getTimeWindowStatus,
   isDateInRange,
+  nowIso,
   todayInTimezone,
 } from '@/lib/time-window';
+import { readJson, removeItem, writeJson } from '@/lib/storage';
 
 const STORAGE_KEY = 'nightcheck-data-v2';
 const SESSION_KEY = 'nightcheck-session';
@@ -119,29 +121,52 @@ function defaultData(): AppData {
 }
 
 function loadData(): AppData {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    const data = defaultData();
-    saveData(data);
-    return data;
+  const data = readJson<AppData>(STORAGE_KEY);
+  if (!data) {
+    const seeded = defaultData();
+    saveData(seeded);
+    return seeded;
   }
-  return JSON.parse(raw) as AppData;
+  return data;
 }
 
 function saveData(data: AppData): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  writeJson(STORAGE_KEY, data);
+}
+
+function findByIdOrThrow<T extends { id: string }>(
+  items: T[],
+  id: string,
+  label: string,
+): T {
+  const item = items.find((i) => i.id === id);
+  if (!item) throw new Error(`${label} not found`);
+  return item;
+}
+
+function pendingForHostel<T extends { hostelId: string; status: string }>(
+  items: T[],
+  hostelId: string,
+): T[] {
+  return items.filter((i) => i.hostelId === hostelId && i.status === 'pending');
+}
+
+function applyDecision<T extends { status: string; wardenId?: string; decidedAt?: string }>(
+  record: T,
+  status: T['status'],
+  wardenId: string,
+): void {
+  record.status = status;
+  record.wardenId = wardenId;
+  record.decidedAt = nowIso();
 }
 
 function getHostel(data: AppData, hostelId: string): HostelCenter {
-  const hostel = data.hostels.find((h) => h.id === hostelId);
-  if (!hostel) throw new Error('Hostel not found');
-  return hostel;
+  return findByIdOrThrow(data.hostels, hostelId, 'Hostel');
 }
 
 function getStudent(data: AppData, studentId: string): Student {
-  const student = data.students.find((s) => s.id === studentId);
-  if (!student) throw new Error('Student not found');
-  return student;
+  return findByIdOrThrow(data.students, studentId, 'Student');
 }
 
 function normalizePhone(phone: string): string {
@@ -293,15 +318,14 @@ export const demoStore = {
     };
 
     const session: SessionUser = { profile, student };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    writeJson(SESSION_KEY, session);
     return session;
   },
 
   getStudentSession(): SessionUser | null {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
+    const session = readJson<SessionUser>(SESSION_KEY);
+    if (!session) return null;
 
-    const session = JSON.parse(raw) as SessionUser;
     const student = loadData().students.find((s) => s.id === session.student.id);
     if (!student) return null;
 
@@ -309,7 +333,7 @@ export const demoStore = {
   },
 
   logoutStudent(): void {
-    localStorage.removeItem(SESSION_KEY);
+    removeItem(SESSION_KEY);
   },
 
   loginWarden(email: string, password: string): WardenSession | null {
@@ -320,17 +344,16 @@ export const demoStore = {
       profile: DEFAULT_WARDEN,
       hostel: getHostel(data, DEFAULT_WARDEN.hostelId),
     };
-    localStorage.setItem(WARDEN_SESSION_KEY, JSON.stringify(session));
+    writeJson(WARDEN_SESSION_KEY, session);
     return session;
   },
 
   getWardenSession(): WardenSession | null {
-    const raw = localStorage.getItem(WARDEN_SESSION_KEY);
-    return raw ? (JSON.parse(raw) as WardenSession) : null;
+    return readJson<WardenSession>(WARDEN_SESSION_KEY);
   },
 
   logoutWarden(): void {
-    localStorage.removeItem(WARDEN_SESSION_KEY);
+    removeItem(WARDEN_SESSION_KEY);
   },
 
   // --- registration --------------------------------------------------------
@@ -409,7 +432,7 @@ export const demoStore = {
     const student = getStudent(data, studentId);
     const hostel = getHostel(data, student.hostelId);
     const today = todayInTimezone(hostel.timezone);
-    const timestamp = new Date().toISOString();
+    const timestamp = nowIso();
 
     const fail = (failReason: string, message: string): CheckInResult => {
       const log = writeLog(data, student, today, {
@@ -482,7 +505,7 @@ export const demoStore = {
       reason,
       status: 'pending',
       isRetroactive: startDate < todayInTimezone(hostel.timezone),
-      submittedAt: new Date().toISOString(),
+      submittedAt: nowIso(),
     };
 
     data.leaves.push(leave);
@@ -493,12 +516,9 @@ export const demoStore = {
   /** Only a warden decision can put a student on leave. */
   reviewLeave(leaveId: string, status: 'approved' | 'rejected', wardenId: string): LeaveRequest {
     const data = loadData();
-    const leave = data.leaves.find((l) => l.id === leaveId);
-    if (!leave) throw new Error('Leave request not found');
+    const leave = findByIdOrThrow(data.leaves, leaveId, 'Leave request');
 
-    leave.status = status;
-    leave.wardenId = wardenId;
-    leave.decidedAt = new Date().toISOString();
+    applyDecision(leave, status, wardenId);
 
     if (status === 'approved') {
       const student = getStudent(data, leave.studentId);
@@ -508,7 +528,7 @@ export const demoStore = {
         if (existing?.status === 'success') continue;
 
         writeLog(data, student, date, {
-          timestamp: new Date().toISOString(),
+          timestamp: nowIso(),
           status: 'on_leave',
           failReason: undefined,
           markedBy: wardenId,
@@ -521,7 +541,7 @@ export const demoStore = {
   },
 
   getPendingLeaves(hostelId: string): LeaveRequest[] {
-    return loadData().leaves.filter((l) => l.hostelId === hostelId && l.status === 'pending');
+    return pendingForHostel(loadData().leaves, hostelId);
   },
 
   getStudentLeaves(studentId: string): LeaveRequest[] {
@@ -545,7 +565,7 @@ export const demoStore = {
     const student = getStudent(data, studentId);
 
     const log = writeLog(data, student, date, {
-      timestamp: new Date().toISOString(),
+      timestamp: nowIso(),
       status: 'manual_override',
       failReason: reason,
       markedBy: wardenId,
@@ -580,7 +600,7 @@ export const demoStore = {
       newDeviceId: input.newDeviceId,
       reason: input.reason,
       status: 'pending',
-      requestedAt: new Date().toISOString(),
+      requestedAt: nowIso(),
     };
 
     data.deviceChanges.push(request);
@@ -595,12 +615,9 @@ export const demoStore = {
     wardenId: string,
   ): DeviceChangeRequest {
     const data = loadData();
-    const request = data.deviceChanges.find((r) => r.id === requestId);
-    if (!request) throw new Error('Device change request not found');
+    const request = findByIdOrThrow(data.deviceChanges, requestId, 'Device change request');
 
-    request.status = status;
-    request.wardenId = wardenId;
-    request.decidedAt = new Date().toISOString();
+    applyDecision(request, status, wardenId);
 
     if (status === 'approved') {
       const student = getStudent(data, request.studentId);
@@ -614,9 +631,7 @@ export const demoStore = {
   },
 
   getPendingDeviceChanges(hostelId: string): DeviceChangeRequest[] {
-    return loadData().deviceChanges.filter(
-      (r) => r.hostelId === hostelId && r.status === 'pending',
-    );
+    return pendingForHostel(loadData().deviceChanges, hostelId);
   },
 
   // --- reporting -----------------------------------------------------------
@@ -653,8 +668,8 @@ export const demoStore = {
   },
 
   resetDemo(): void {
-    localStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(WARDEN_SESSION_KEY);
+    removeItem(SESSION_KEY);
+    removeItem(WARDEN_SESSION_KEY);
     saveData(defaultData());
   },
 };
