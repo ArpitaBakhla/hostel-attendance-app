@@ -61,6 +61,10 @@ export function getTimeWindowStatus(now = new Date(), timezone = 'Asia/Kolkata')
   };
 }
 
+export function nowIso(): string {
+  return new Date().toISOString();
+}
+
 export function todayInTimezone(timezone = 'Asia/Kolkata'): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
