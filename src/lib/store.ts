@@ -1,44 +1,53 @@
 import type {
-  AttendanceRecord,
+  AttendanceLog,
   AttendanceStatus,
   CheckInResult,
   DashboardStats,
   DeviceChangeRequest,
-  DeviceIssueReport,
-  Hostel,
-  LeaveApplication,
+  HostelCenter,
+  LeaveRequest,
+  OtpChallenge,
+  OtpPurpose,
   Profile,
   SessionUser,
   Student,
   WardenSession,
 } from '@/types';
-import { getDeviceFingerprint, isWithinGeofence } from '@/lib/geo';
-import { datesBetween, isDateInRange, todayInTimezone } from '@/lib/time-window';
+import { getDeviceId, isWithinGeofence } from '@/lib/geo';
+import {
+  datesBetween,
+  getTimeWindowStatus,
+  isDateInRange,
+  todayInTimezone,
+} from '@/lib/time-window';
 
-const STORAGE_KEY = 'nightcheck-data-v1';
+const STORAGE_KEY = 'nightcheck-data-v2';
 const SESSION_KEY = 'nightcheck-session';
 const WARDEN_SESSION_KEY = 'nightcheck-warden-session';
+
+const OTP_TTL_MS = 5 * 60 * 1000;
+const OVERRIDE_FLAG_THRESHOLD = 3;
 
 function uid(): string {
   return crypto.randomUUID();
 }
 
 interface AppData {
-  hostels: Hostel[];
+  hostels: HostelCenter[];
   profiles: Profile[];
   students: Student[];
-  attendance: AttendanceRecord[];
-  leaves: LeaveApplication[];
+  attendance: AttendanceLog[];
+  leaves: LeaveRequest[];
   deviceChanges: DeviceChangeRequest[];
-  deviceIssues: DeviceIssueReport[];
+  otps: OtpChallenge[];
 }
 
-const DEFAULT_HOSTEL: Hostel = {
+const DEFAULT_HOSTEL: HostelCenter = {
   id: 'hostel-1',
   name: 'Block A — Girls Hostel',
-  latitude: 28.6139,
-  longitude: 77.209,
-  geofenceRadiusM: 150,
+  centerLat: 28.6139,
+  centerLng: 77.209,
+  radiusMeters: 100,
   timezone: 'Asia/Kolkata',
 };
 
@@ -51,98 +60,79 @@ const DEFAULT_WARDEN: Profile = {
   email: 'warden@nightcheck.demo',
 };
 
-const SEED_STUDENTS: Student[] = [
-  {
-    id: 'student-1',
-    hostelId: DEFAULT_HOSTEL.id,
-    fullName: 'Arpita Bakhla',
-    rollNumber: 'CS2024001',
-    roomNumber: '204',
-    phone: '+919876543210',
-    enrolled: false,
-  },
-  {
-    id: 'student-2',
-    hostelId: DEFAULT_HOSTEL.id,
-    fullName: 'Priya Singh',
-    rollNumber: 'CS2024002',
-    roomNumber: '205',
-    phone: '+919876543211',
-    enrolled: true,
-    webauthnCredentialId: 'demo-student-2',
-    webauthnPublicKey: 'demo-public-key',
-    deviceFingerprint: 'demo-device-2',
-  },
-  {
-    id: 'student-3',
-    hostelId: DEFAULT_HOSTEL.id,
-    fullName: 'Ananya Patel',
-    rollNumber: 'CS2024003',
-    roomNumber: '206',
-    phone: '+919876543212',
-    enrolled: true,
-    webauthnCredentialId: 'demo-student-3',
-    webauthnPublicKey: 'demo-public-key',
-    deviceFingerprint: 'demo-device-3',
-  },
-];
+function seedStudents(): Student[] {
+  return [
+    {
+      id: 'student-1',
+      hostelId: DEFAULT_HOSTEL.id,
+      name: 'Arpita Bakhla',
+      rollNumber: 'CS2024001',
+      roomNo: '204',
+      phoneNumber: '+919876543210',
+      overrideCount: 0,
+      onboardedBy: DEFAULT_WARDEN.id,
+      phoneVerified: false,
+    },
+    {
+      id: 'student-2',
+      hostelId: DEFAULT_HOSTEL.id,
+      name: 'Priya Singh',
+      rollNumber: 'CS2024002',
+      roomNo: '205',
+      phoneNumber: '+919876543211',
+      secondaryContactNumber: '+919812345678',
+      registeredDeviceId: 'demo-device-2',
+      webauthnCredentialId: 'demo-student-2',
+      webauthnPublicKey: 'demo-public-key',
+      overrideCount: 0,
+      onboardedBy: DEFAULT_WARDEN.id,
+      phoneVerified: true,
+    },
+    {
+      id: 'student-3',
+      hostelId: DEFAULT_HOSTEL.id,
+      name: 'Ananya Patel',
+      rollNumber: 'CS2024003',
+      roomNo: '206',
+      phoneNumber: '+919876543212',
+      secondaryContactNumber: '+919812345679',
+      registeredDeviceId: 'demo-device-3',
+      webauthnCredentialId: 'demo-student-3',
+      webauthnPublicKey: 'demo-public-key',
+      overrideCount: 0,
+      onboardedBy: DEFAULT_WARDEN.id,
+      phoneVerified: true,
+    },
+  ];
+}
 
 function defaultData(): AppData {
   return {
     hostels: [DEFAULT_HOSTEL],
     profiles: [DEFAULT_WARDEN],
-    students: SEED_STUDENTS,
+    students: seedStudents(),
     attendance: [],
     leaves: [],
     deviceChanges: [],
-    deviceIssues: [],
+    otps: [],
   };
 }
 
-function parseJson<T>(raw: string | null): T | null {
-  if (!raw) return null;
-  try {
-    const value = JSON.parse(raw) as unknown;
-    return value !== null && typeof value === 'object' ? (value as T) : null;
-  } catch {
-    return null;
-  }
-}
-
 function loadData(): AppData {
-  const stored = parseJson<AppData>(localStorage.getItem(STORAGE_KEY));
-  if (!stored || !Array.isArray(stored.students) || !Array.isArray(stored.hostels)) {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
     const data = defaultData();
     saveData(data);
     return data;
   }
-  return stored;
-}
-
-const MAX_TEXT_LENGTH = 500;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function requireText(value: string, field: string, maxLength = MAX_TEXT_LENGTH): string {
-  const trimmed = value.trim();
-  if (!trimmed) throw new Error(`${field} is required.`);
-  if (trimmed.length > maxLength) {
-    throw new Error(`${field} must be at most ${maxLength} characters.`);
-  }
-  return trimmed;
-}
-
-function requireDate(value: string, field: string): string {
-  if (!DATE_PATTERN.test(value) || Number.isNaN(Date.parse(`${value}T12:00:00`))) {
-    throw new Error(`${field} must be a valid YYYY-MM-DD date.`);
-  }
-  return value;
+  return JSON.parse(raw) as AppData;
 }
 
 function saveData(data: AppData): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
-function getHostel(data: AppData, hostelId: string): Hostel {
+function getHostel(data: AppData, hostelId: string): HostelCenter {
   const hostel = data.hostels.find((h) => h.id === hostelId);
   if (!hostel) throw new Error('Hostel not found');
   return hostel;
@@ -154,73 +144,140 @@ function getStudent(data: AppData, studentId: string): Student {
   return student;
 }
 
-function getApprovedLeaveForDate(
-  data: AppData,
+function normalizePhone(phone: string): string {
+  return phone.replace(/[\s-]/g, '');
+}
+
+function isEnrolled(student: Student): boolean {
+  return Boolean(
+    student.phoneVerified && student.webauthnCredentialId && student.registeredDeviceId,
+  );
+}
+
+function findLog(data: AppData, studentId: string, date: string): AttendanceLog | undefined {
+  return data.attendance.find((a) => a.studentId === studentId && a.date === date);
+}
+
+export function approvedLeaveForDate(
+  leaves: LeaveRequest[],
   studentId: string,
   date: string,
-): LeaveApplication | undefined {
-  return data.leaves.find(
+): LeaveRequest | undefined {
+  return leaves.find(
     (leave) =>
       leave.studentId === studentId &&
       leave.status === 'approved' &&
-      isDateInRange(date, leave.fromDate, leave.toDate),
+      isDateInRange(date, leave.startDate, leave.endDate),
   );
 }
 
-function getOrCreateAttendance(
+function writeLog(
   data: AppData,
   student: Student,
   date: string,
-): AttendanceRecord {
-  let record = data.attendance.find(
-    (a) => a.studentId === student.id && a.date === date,
-  );
-
-  if (!record) {
-    const approvedLeave = getApprovedLeaveForDate(data, student.id, date);
-    record = {
-      id: uid(),
-      studentId: student.id,
-      hostelId: student.hostelId,
-      date,
-      status: approvedLeave ? 'on_leave' : 'absent',
-    };
-    data.attendance.push(record);
+  patch: Omit<AttendanceLog, 'id' | 'studentId' | 'hostelId' | 'date'>,
+): AttendanceLog {
+  const existing = findLog(data, student.id, date);
+  if (existing) {
+    Object.assign(existing, patch);
+    return existing;
   }
 
-  return record;
-}
-
-function syncLeaveStatuses(data: AppData, studentId: string, date: string): void {
-  const record = data.attendance.find((a) => a.studentId === studentId && a.date === date);
-  const approvedLeave = getApprovedLeaveForDate(data, studentId, date);
-
-  if (record && record.status !== 'present' && record.status !== 'excused' && approvedLeave) {
-    record.status = 'on_leave';
-  }
+  const log: AttendanceLog = {
+    id: uid(),
+    studentId: student.id,
+    hostelId: student.hostelId,
+    date,
+    ...patch,
+  };
+  data.attendance.push(log);
+  return log;
 }
 
 export const demoStore = {
-  getHostel(hostelId: string): Hostel {
+  getHostel(hostelId: string): HostelCenter {
     return getHostel(loadData(), hostelId);
+  },
+
+  getDefaultHostelId(): string {
+    return DEFAULT_HOSTEL.id;
   },
 
   getStudentsByHostel(hostelId: string): Student[] {
     return loadData().students.filter((s) => s.hostelId === hostelId);
   },
 
-  findStudentByPhone(phone: string): Student | undefined {
-    const normalized = phone.replace(/\s/g, '');
-    return loadData().students.find(
-      (s) => s.phone.replace(/\s/g, '') === normalized,
-    );
+  getStudentById(studentId: string): Student | undefined {
+    return loadData().students.find((s) => s.id === studentId);
   },
 
-  verifyOtp(_phone: string, otp: string): boolean {
-    const demoOtp = import.meta.env.VITE_DEMO_OTP;
-    if (!useDemoMode() || !demoOtp) return false;
-    return otp === demoOtp;
+  findStudentByPhone(phone: string): Student | undefined {
+    const normalized = normalizePhone(phone);
+    return loadData().students.find((s) => normalizePhone(s.phoneNumber) === normalized);
   },
+
+  isEnrolled,
+
+  // --- OTP -----------------------------------------------------------------
+
+  /**
+   * Issues an OTP for a student. The destination is derived from the purpose so
+   * a caller can never redirect a code to an arbitrary number.
+   */
+  sendOtp(studentId: string, purpose: OtpPurpose): OtpChallenge {
+    const data = loadData();
+    const student = getStudent(data, studentId);
+
+    const sentTo =
+      purpose === 'tier2_secondary_contact'
+        ? student.secondaryContactNumber
+        : student.phoneNumber;
+
+    if (!sentTo) {
+      throw new Error('No secondary contact number is registered for this student.');
+    }
+
+    const challenge: OtpChallenge = {
+      id: uid(),
+      studentId,
+      purpose,
+      sentTo,
+      code: String(Math.floor(100000 + Math.random() * 900000)),
+      expiresAt: new Date(Date.now() + OTP_TTL_MS).toISOString(),
+      consumed: false,
+    };
+
+    data.otps = data.otps.filter(
+      (o) => !(o.studentId === studentId && o.purpose === purpose && !o.consumed),
+    );
+    data.otps.push(challenge);
+    saveData(data);
+    return challenge;
+  },
+
+  verifyOtp(challengeId: string, code: string): { ok: boolean; message: string } {
+    const data = loadData();
+    const challenge = data.otps.find((o) => o.id === challengeId);
+
+    if (!challenge || challenge.consumed) {
+      return { ok: false, message: 'This code is no longer valid. Request a new one.' };
+    }
+    if (new Date(challenge.expiresAt).getTime() < Date.now()) {
+      return { ok: false, message: 'Code expired. Request a new one.' };
+    }
+    if (challenge.code !== code.trim()) {
+      return { ok: false, message: 'Incorrect code.' };
+    }
+
+    challenge.consumed = true;
+    if (challenge.purpose === 'registration') {
+      getStudent(data, challenge.studentId).phoneVerified = true;
+    }
+    saveData(data);
+    return { ok: true, message: 'Phone number verified.' };
+  },
+
+  // --- sessions ------------------------------------------------------------
 
   loginStudent(phone: string): SessionUser | null {
     const student = this.findStudentByPhone(phone);
@@ -231,8 +288,8 @@ export const demoStore = {
       userId: student.id,
       hostelId: student.hostelId,
       role: 'student',
-      fullName: student.fullName,
-      phone: student.phone,
+      fullName: student.name,
+      phone: student.phoneNumber,
     };
 
     const session: SessionUser = { profile, student };
@@ -244,11 +301,8 @@ export const demoStore = {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
 
-    const session = parseJson<SessionUser>(raw);
-    if (!session) return null;
-
-    const data = loadData();
-    const student = data.students.find((s) => s.id === session.student?.id);
+    const session = JSON.parse(raw) as SessionUser;
+    const student = loadData().students.find((s) => s.id === session.student.id);
     if (!student) return null;
 
     return { profile: session.profile, student };
@@ -259,37 +313,91 @@ export const demoStore = {
   },
 
   loginWarden(email: string, password: string): WardenSession | null {
-    const demoPassword = import.meta.env.VITE_DEMO_WARDEN_PASSWORD;
-    if (!useDemoMode() || !demoPassword) return null;
-    if (email !== DEFAULT_WARDEN.email || password !== demoPassword) {
-      return null;
-    }
+    if (email !== DEFAULT_WARDEN.email || password !== 'warden123') return null;
 
     const data = loadData();
-    const hostel = getHostel(data, DEFAULT_WARDEN.hostelId);
-    const session: WardenSession = { profile: DEFAULT_WARDEN, hostel };
+    const session: WardenSession = {
+      profile: DEFAULT_WARDEN,
+      hostel: getHostel(data, DEFAULT_WARDEN.hostelId),
+    };
     localStorage.setItem(WARDEN_SESSION_KEY, JSON.stringify(session));
     return session;
   },
 
   getWardenSession(): WardenSession | null {
-    return parseJson<WardenSession>(localStorage.getItem(WARDEN_SESSION_KEY));
+    const raw = localStorage.getItem(WARDEN_SESSION_KEY);
+    return raw ? (JSON.parse(raw) as WardenSession) : null;
   },
 
   logoutWarden(): void {
     localStorage.removeItem(WARDEN_SESSION_KEY);
   },
 
-  enrollStudent(studentId: string, credentialId: string, publicKey: string): Student {
+  // --- registration --------------------------------------------------------
+
+  addStudent(input: {
+    hostelId: string;
+    name: string;
+    rollNumber: string;
+    roomNo: string;
+    phoneNumber: string;
+    secondaryContactNumber?: string;
+    onboardedBy: string;
+  }): Student {
     const data = loadData();
-    const student = getStudent(data, studentId);
-    student.enrolled = true;
-    student.webauthnCredentialId = credentialId;
-    student.webauthnPublicKey = publicKey;
-    student.deviceFingerprint = getDeviceFingerprint();
+    const normalized = normalizePhone(input.phoneNumber);
+
+    if (data.students.some((s) => normalizePhone(s.phoneNumber) === normalized)) {
+      throw new Error('A student with this phone number already exists.');
+    }
+    if (data.students.some((s) => s.rollNumber === input.rollNumber)) {
+      throw new Error('A student with this roll number already exists.');
+    }
+
+    const student: Student = {
+      id: uid(),
+      hostelId: input.hostelId,
+      name: input.name,
+      rollNumber: input.rollNumber,
+      roomNo: input.roomNo,
+      phoneNumber: input.phoneNumber,
+      secondaryContactNumber: input.secondaryContactNumber || undefined,
+      overrideCount: 0,
+      onboardedBy: input.onboardedBy,
+      phoneVerified: false,
+    };
+
+    data.students.push(student);
     saveData(data);
     return student;
   },
+
+  /**
+   * Binds a WebAuthn credential and the current device to a student. Only
+   * allowed once the phone number is verified and while no device is bound —
+   * replacing a device requires warden approval.
+   */
+  enrollStudent(studentId: string, credentialId: string, publicKey: string): Student {
+    const data = loadData();
+    const student = getStudent(data, studentId);
+
+    if (!student.phoneVerified) {
+      throw new Error('Verify your phone number before enrolling a fingerprint.');
+    }
+    if (student.registeredDeviceId) {
+      throw new Error(
+        'A device is already registered. Ask your warden to approve a device change.',
+      );
+    }
+
+    student.webauthnCredentialId = credentialId;
+    student.webauthnPublicKey = publicKey;
+    student.registeredDeviceId = getDeviceId();
+    saveData(data);
+    return student;
+  },
+
+  // --- check-in ------------------------------------------------------------
 
   checkIn(
     studentId: string,
@@ -301,71 +409,79 @@ export const demoStore = {
     const student = getStudent(data, studentId);
     const hostel = getHostel(data, student.hostelId);
     const today = todayInTimezone(hostel.timezone);
+    const timestamp = new Date().toISOString();
 
-    if (!student.enrolled) {
-      return { success: false, message: 'Complete fingerprint enrollment first.' };
+    const fail = (failReason: string, message: string): CheckInResult => {
+      const log = writeLog(data, student, today, {
+        timestamp,
+        gpsLat: latitude,
+        gpsLng: longitude,
+        status: 'failed',
+        failReason,
+      });
+      saveData(data);
+      return { success: false, message, log };
+    };
+
+    if (!isEnrolled(student)) {
+      return fail('not_enrolled', 'Complete phone verification and fingerprint enrollment first.');
+    }
+
+    const window = getTimeWindowStatus(new Date(), hostel.timezone);
+    if (!window.isOpen) {
+      return fail('outside_time_window', window.message);
     }
 
     if (!fingerprintVerified) {
-      return { success: false, message: 'Fingerprint verification failed.' };
+      return fail('webauthn_failed', 'Fingerprint verification failed.');
     }
 
-    const deviceFp = getDeviceFingerprint();
-    if (student.deviceFingerprint && student.deviceFingerprint !== deviceFp) {
-      return {
-        success: false,
-        message: 'This is not your registered device. Submit a device change request.',
-      };
+    if (student.registeredDeviceId !== getDeviceId()) {
+      return fail(
+        'device_mismatch',
+        'This is not your registered device. Ask your warden to approve a device change.',
+      );
     }
 
-    if (!isWithinGeofence(latitude, longitude, hostel.latitude, hostel.longitude, hostel.geofenceRadiusM)) {
-      return {
-        success: false,
-        message: 'You are outside the hostel boundary. Move closer and try again.',
-      };
+    if (
+      !isWithinGeofence(latitude, longitude, hostel.centerLat, hostel.centerLng, hostel.radiusMeters)
+    ) {
+      return fail(
+        'outside_geofence',
+        `You are outside the ${hostel.radiusMeters}m hostel boundary. Move closer and try again.`,
+      );
     }
 
-    const record = getOrCreateAttendance(data, student, today);
-
-    if (record.status === 'on_leave') {
-      return {
-        success: false,
-        message: 'You are marked on leave today. Cancel leave or contact warden.',
-        record,
-      };
-    }
-
-    record.status = 'present';
-    record.checkedInAt = new Date().toISOString();
-    record.latitude = latitude;
-    record.longitude = longitude;
+    // A real check-in wins over an approved leave for that night (returned early).
+    const log = writeLog(data, student, today, {
+      timestamp,
+      gpsLat: latitude,
+      gpsLng: longitude,
+      status: 'success',
+      failReason: undefined,
+      markedBy: undefined,
+    });
 
     saveData(data);
-    return { success: true, message: 'Check-in successful!', record };
+    return { success: true, message: 'Check-in successful!', log };
   },
 
-  submitLeave(
-    studentId: string,
-    fromDate: string,
-    toDate: string,
-    reason: string,
-  ): LeaveApplication {
+  // --- leave ---------------------------------------------------------------
+
+  submitLeave(studentId: string, startDate: string, endDate: string, reason: string): LeaveRequest {
     const data = loadData();
     const student = getStudent(data, studentId);
+    const hostel = getHostel(data, student.hostelId);
 
-    requireDate(fromDate, 'From date');
-    requireDate(toDate, 'To date');
-    if (toDate < fromDate) throw new Error('To date must not be before from date.');
-    const cleanReason = requireText(reason, 'Reason');
-
-    const leave: LeaveApplication = {
+    const leave: LeaveRequest = {
       id: uid(),
       studentId,
       hostelId: student.hostelId,
-      fromDate,
-      toDate,
-      reason: cleanReason,
+      startDate,
+      endDate,
+      reason,
       status: 'pending',
+      isRetroactive: startDate < todayInTimezone(hostel.timezone),
       submittedAt: new Date().toISOString(),
     };
 
@@ -374,27 +490,29 @@ export const demoStore = {
     return leave;
   },
 
-  reviewLeave(
-    leaveId: string,
-    status: 'approved' | 'denied',
-    wardenId: string,
-    reviewNote?: string,
-  ): LeaveApplication {
+  /** Only a warden decision can put a student on leave. */
+  reviewLeave(leaveId: string, status: 'approved' | 'rejected', wardenId: string): LeaveRequest {
     const data = loadData();
     const leave = data.leaves.find((l) => l.id === leaveId);
-    if (!leave) throw new Error('Leave application not found');
+    if (!leave) throw new Error('Leave request not found');
 
     leave.status = status;
-    leave.reviewedAt = new Date().toISOString();
-    leave.reviewedBy = wardenId;
-    leave.reviewNote = reviewNote;
+    leave.wardenId = wardenId;
+    leave.decidedAt = new Date().toISOString();
 
     if (status === 'approved') {
-      for (const date of datesBetween(leave.fromDate, leave.toDate)) {
-        const record = getOrCreateAttendance(data, getStudent(data, leave.studentId), date);
-        if (record.status !== 'present' && record.status !== 'excused') {
-          record.status = 'on_leave';
-        }
+      const student = getStudent(data, leave.studentId);
+      for (const date of datesBetween(leave.startDate, leave.endDate)) {
+        const existing = findLog(data, student.id, date);
+        // A successful check-in for that night always wins over leave.
+        if (existing?.status === 'success') continue;
+
+        writeLog(data, student, date, {
+          timestamp: new Date().toISOString(),
+          status: 'on_leave',
+          failReason: undefined,
+          markedBy: wardenId,
+        });
       }
     }
 
@@ -402,22 +520,67 @@ export const demoStore = {
     return leave;
   },
 
-  submitDeviceChange(
+  getPendingLeaves(hostelId: string): LeaveRequest[] {
+    return loadData().leaves.filter((l) => l.hostelId === hostelId && l.status === 'pending');
+  },
+
+  getStudentLeaves(studentId: string): LeaveRequest[] {
+    return loadData()
+      .leaves.filter((l) => l.studentId === studentId)
+      .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+  },
+
+  // --- warden actions ------------------------------------------------------
+
+  markPresent(
     studentId: string,
+    date: string,
     reason: string,
-    newDeviceInfo: string,
-  ): DeviceChangeRequest {
+    wardenId: string,
+  ): AttendanceLog {
+    if (!reason.trim()) throw new Error('A reason is required for a manual override.');
+    if (!wardenId.trim()) throw new Error('A warden ID is required for a manual override.');
+
     const data = loadData();
     const student = getStudent(data, studentId);
 
+    const log = writeLog(data, student, date, {
+      timestamp: new Date().toISOString(),
+      status: 'manual_override',
+      failReason: reason,
+      markedBy: wardenId,
+    });
+
+    student.overrideCount += 1;
+    saveData(data);
+    return log;
+  },
+
+  isOverrideFlagged(student: Student): boolean {
+    return student.overrideCount >= OVERRIDE_FLAG_THRESHOLD;
+  },
+
+  submitDeviceChange(input: {
+    studentId: string;
+    reason: string;
+    newDeviceId: string;
+    otpVerified: boolean;
+    otpSentTo?: string;
+  }): DeviceChangeRequest {
+    const data = loadData();
+    const student = getStudent(data, input.studentId);
+
     const request: DeviceChangeRequest = {
       id: uid(),
-      studentId,
+      studentId: input.studentId,
       hostelId: student.hostelId,
-      reason: requireText(reason, 'Reason'),
-      newDeviceInfo: requireText(newDeviceInfo, 'Device info', 200),
+      otpVerified: input.otpVerified,
+      otpSentTo: input.otpSentTo,
+      oldDeviceId: student.registeredDeviceId,
+      newDeviceId: input.newDeviceId,
+      reason: input.reason,
       status: 'pending',
-      submittedAt: new Date().toISOString(),
+      requestedAt: new Date().toISOString(),
     };
 
     data.deviceChanges.push(request);
@@ -425,9 +588,10 @@ export const demoStore = {
     return request;
   },
 
+  /** Device replacement always requires warden approval. */
   reviewDeviceChange(
     requestId: string,
-    status: 'approved' | 'denied',
+    status: 'approved' | 'rejected',
     wardenId: string,
   ): DeviceChangeRequest {
     const data = loadData();
@@ -435,160 +599,18 @@ export const demoStore = {
     if (!request) throw new Error('Device change request not found');
 
     request.status = status;
-    request.reviewedAt = new Date().toISOString();
-    request.reviewedBy = wardenId;
+    request.wardenId = wardenId;
+    request.decidedAt = new Date().toISOString();
 
     if (status === 'approved') {
       const student = getStudent(data, request.studentId);
-      student.deviceFingerprint = undefined;
+      student.registeredDeviceId = request.newDeviceId;
+      student.webauthnCredentialId = undefined;
+      student.webauthnPublicKey = undefined;
     }
 
     saveData(data);
     return request;
-  },
-
-  submitDeviceIssue(studentId: string, reason: string): DeviceIssueReport {
-    const data = loadData();
-    const student = getStudent(data, studentId);
-    const today = todayInTimezone(getHostel(data, student.hostelId).timezone);
-
-    const report: DeviceIssueReport = {
-      id: uid(),
-      studentId,
-      hostelId: student.hostelId,
-      reason: requireText(reason, 'Reason'),
-      date: today,
-      status: 'pending',
-      submittedAt: new Date().toISOString(),
-    };
-
-    data.deviceIssues.push(report);
-    saveData(data);
-    return report;
-  },
-
-  reviewDeviceIssue(
-    reportId: string,
-    resolution: AttendanceStatus,
-    wardenId: string,
-  ): DeviceIssueReport {
-    const data = loadData();
-    const report = data.deviceIssues.find((r) => r.id === reportId);
-    if (!report) throw new Error('Device issue report not found');
-
-    report.status = 'approved';
-    report.reviewedAt = new Date().toISOString();
-    report.reviewedBy = wardenId;
-    report.resolution = resolution;
-
-    const student = getStudent(data, report.studentId);
-    const record = getOrCreateAttendance(data, student, report.date);
-
-    if (resolution === 'excused' || resolution === 'present') {
-      record.status = resolution;
-      record.overrideReason = `Device issue: ${report.reason}`;
-      record.overriddenBy = wardenId;
-    } else if (resolution === 'absent') {
-      record.status = 'absent';
-      record.overrideReason = `Device issue denied: ${report.reason}`;
-      record.overriddenBy = wardenId;
-    }
-
-    saveData(data);
-    return report;
-  },
-
-  manualOverride(
-    studentId: string,
-    date: string,
-    status: AttendanceStatus,
-    reason: string,
-    wardenId: string,
-  ): AttendanceRecord {
-    const data = loadData();
-    const student = getStudent(data, studentId);
-    requireDate(date, 'Date');
-    requireText(reason, 'Reason');
-    const record = getOrCreateAttendance(data, student, date);
-
-    if (status === 'absent' && (record.status === 'present' || record.status === 'on_leave')) {
-      throw new Error('Cannot mark absent when student is Present or On Leave.');
-    }
-
-    record.status = status;
-    record.overrideReason = reason;
-    record.overriddenBy = wardenId;
-    if (status === 'present') {
-      record.checkedInAt = new Date().toISOString();
-    }
-
-    saveData(data);
-    return record;
-  },
-
-  addStudent(
-    hostelId: string,
-    fullName: string,
-    rollNumber: string,
-    roomNumber: string,
-    phone: string,
-  ): Student {
-    const data = loadData();
-    const student: Student = {
-      id: uid(),
-      hostelId,
-      fullName: requireText(fullName, 'Full name', 120),
-      rollNumber: requireText(rollNumber, 'Roll number', 40),
-      roomNumber: requireText(roomNumber, 'Room number', 40),
-      phone: requireText(phone, 'Phone', 20),
-      enrolled: false,
-    };
-    data.students.push(student);
-    saveData(data);
-    return student;
-  },
-
-  forceUnbindDevice(studentId: string): Student {
-    const data = loadData();
-    const student = getStudent(data, studentId);
-    student.deviceFingerprint = undefined;
-    student.webauthnCredentialId = undefined;
-    student.webauthnPublicKey = undefined;
-    student.enrolled = false;
-    saveData(data);
-    return student;
-  },
-
-  getTodayRoll(hostelId: string, date?: string): Array<{
-    student: Student;
-    record: AttendanceRecord;
-  }> {
-    const data = loadData();
-    const hostel = getHostel(data, hostelId);
-    const targetDate = date ?? todayInTimezone(hostel.timezone);
-
-    return data.students
-      .filter((s) => s.hostelId === hostelId)
-      .map((student) => {
-        syncLeaveStatuses(data, student.id, targetDate);
-        const record = getOrCreateAttendance(data, student, targetDate);
-        return { student, record };
-      });
-  },
-
-  getDashboardStats(hostelId: string, date?: string): DashboardStats {
-    const roll = this.getTodayRoll(hostelId, date);
-    return {
-      total: roll.length,
-      present: roll.filter((r) => r.record.status === 'present').length,
-      absent: roll.filter((r) => r.record.status === 'absent').length,
-      onLeave: roll.filter((r) => r.record.status === 'on_leave').length,
-      excused: roll.filter((r) => r.record.status === 'excused').length,
-    };
-  },
-
-  getPendingLeaves(hostelId: string): LeaveApplication[] {
-    return loadData().leaves.filter((l) => l.hostelId === hostelId && l.status === 'pending');
   },
 
   getPendingDeviceChanges(hostelId: string): DeviceChangeRequest[] {
@@ -597,37 +619,47 @@ export const demoStore = {
     );
   },
 
-  getPendingDeviceIssues(hostelId: string): DeviceIssueReport[] {
-    return loadData().deviceIssues.filter(
-      (r) => r.hostelId === hostelId && r.status === 'pending',
-    );
+  // --- reporting -----------------------------------------------------------
+
+  getRoll(hostelId: string, date?: string): Array<{ student: Student; log?: AttendanceLog }> {
+    const data = loadData();
+    const hostel = getHostel(data, hostelId);
+    const targetDate = date ?? todayInTimezone(hostel.timezone);
+
+    return data.students
+      .filter((s) => s.hostelId === hostelId)
+      .map((student) => ({ student, log: findLog(data, student.id, targetDate) }));
   },
 
-  getStudentLeaves(studentId: string): LeaveApplication[] {
-    return loadData()
-      .leaves.filter((l) => l.studentId === studentId)
-      .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+  getDashboardStats(hostelId: string, date?: string): DashboardStats {
+    const roll = this.getRoll(hostelId, date);
+    const count = (status: AttendanceStatus) =>
+      roll.filter((r) => r.log?.status === status).length;
+
+    return {
+      total: roll.length,
+      present: count('success'),
+      failed: count('failed'),
+      manualOverride: count('manual_override'),
+      onLeave: count('on_leave'),
+      absent: roll.filter((r) => !r.log).length,
+    };
   },
 
-  getStudentAttendance(studentId: string): AttendanceRecord[] {
+  getStudentAttendance(studentId: string): AttendanceLog[] {
     return loadData()
       .attendance.filter((a) => a.studentId === studentId)
       .sort((a, b) => b.date.localeCompare(a.date));
   },
 
-  getStudentById(studentId: string): Student | undefined {
-    return loadData().students.find((s) => s.id === studentId);
-  },
-
   resetDemo(): void {
-    localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(WARDEN_SESSION_KEY);
     saveData(defaultData());
   },
 };
 
-export function useDemoMode(): boolean {
+export function isDemoMode(): boolean {
   const url = import.meta.env.VITE_SUPABASE_URL;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
   return !url || !key || url.includes('your-project');
