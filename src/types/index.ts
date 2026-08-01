@@ -1,17 +1,19 @@
 export type UserRole = 'student' | 'warden' | 'super_admin';
 
-export type AttendanceStatus = 'present' | 'absent' | 'on_leave' | 'excused';
+/** attendance_logs.status */
+export type AttendanceStatus = 'success' | 'failed' | 'manual_override' | 'on_leave';
 
-export type LeaveStatus = 'pending' | 'approved' | 'denied';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected';
 
-export type RequestStatus = 'pending' | 'approved' | 'denied';
+export type RequestStatus = 'pending' | 'approved' | 'rejected';
 
-export interface Hostel {
+/** hostel_center */
+export interface HostelCenter {
   id: string;
   name: string;
-  latitude: number;
-  longitude: number;
-  geofenceRadiusM: number;
+  centerLat: number;
+  centerLng: number;
+  radiusMeters: number;
   timezone: string;
 }
 
@@ -25,76 +27,73 @@ export interface Profile {
   phone?: string;
 }
 
+/** students */
 export interface Student {
   id: string;
   hostelId: string;
-  profileId?: string;
-  fullName: string;
+  name: string;
+  roomNo: string;
   rollNumber: string;
-  roomNumber: string;
-  phone: string;
-  enrolled: boolean;
+  phoneNumber: string;
+  secondaryContactNumber?: string;
+  registeredDeviceId?: string;
   webauthnCredentialId?: string;
   webauthnPublicKey?: string;
-  deviceFingerprint?: string;
+  overrideCount: number;
+  onboardedBy?: string;
+  phoneVerified: boolean;
 }
 
-export interface AttendanceRecord {
+/** attendance_logs */
+export interface AttendanceLog {
   id: string;
   studentId: string;
   hostelId: string;
+  /** local date (YYYY-MM-DD) the night belongs to */
   date: string;
+  timestamp: string;
+  gpsLat?: number;
+  gpsLng?: number;
   status: AttendanceStatus;
-  checkedInAt?: string;
-  latitude?: number;
-  longitude?: number;
-  overrideReason?: string;
-  overriddenBy?: string;
+  failReason?: string;
+  markedBy?: string;
 }
 
-export interface LeaveApplication {
-  id: string;
-  studentId: string;
-  hostelId: string;
-  fromDate: string;
-  toDate: string;
-  reason: string;
-  status: LeaveStatus;
-  submittedAt: string;
-  reviewedAt?: string;
-  reviewedBy?: string;
-  reviewNote?: string;
-}
-
+/** device_change_requests */
 export interface DeviceChangeRequest {
   id: string;
   studentId: string;
   hostelId: string;
+  otpVerified: boolean;
+  otpSentTo?: string;
+  oldDeviceId?: string;
+  newDeviceId?: string;
   reason: string;
-  newDeviceInfo: string;
   status: RequestStatus;
-  submittedAt: string;
-  reviewedAt?: string;
-  reviewedBy?: string;
+  wardenId?: string;
+  requestedAt: string;
+  decidedAt?: string;
 }
 
-export interface DeviceIssueReport {
+/** leave_requests */
+export interface LeaveRequest {
   id: string;
   studentId: string;
   hostelId: string;
+  startDate: string;
+  endDate: string;
   reason: string;
-  date: string;
-  status: RequestStatus;
+  status: LeaveStatus;
+  isRetroactive: boolean;
   submittedAt: string;
-  reviewedAt?: string;
-  reviewedBy?: string;
-  resolution?: AttendanceStatus;
+  wardenId?: string;
+  decidedAt?: string;
 }
 
 export interface CheckInResult {
   success: boolean;
   message: string;
-  record?: AttendanceRecord;
+  log?: AttendanceLog;
 }
 
 export interface GeoLocation {
@@ -105,18 +104,36 @@ export interface GeoLocation {
 
 export interface SessionUser {
   profile: Profile;
-  student?: Student;
+  student: Student;
 }
 
 export interface WardenSession {
   profile: Profile;
-  hostel: Hostel;
+  hostel: HostelCenter;
 }
 
 export interface DashboardStats {
   present: number;
   absent: number;
+  failed: number;
   onLeave: number;
-  excused: number;
+  manualOverride: number;
   total: number;
+}
+
+/** A pending OTP challenge (registration, self-report, device change). */
+export type OtpPurpose =
+  | 'registration'
+  | 'tier1_self_report'
+  | 'tier2_secondary_contact'
+  | 'device_change';
+
+export interface OtpChallenge {
+  id: string;
+  studentId: string;
+  purpose: OtpPurpose;
+  sentTo: string;
+  code: string;
+  expiresAt: string;
+  consumed: boolean;
 }
