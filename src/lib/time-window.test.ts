@@ -15,7 +15,12 @@ function istDate(hour: number, minute: number, day = 10): Date {
 describe('getTimeWindowStatus', () => {
   it('reports minutes until the window opens before 8:30 PM', () => {
     const status = getTimeWindowStatus(istDate(20, 0));
-    expect(status).toMatchObject({ isOpen: false, isPastCutoff: false });
+    expect(status).toMatchObject({
+      isOpen: false,
+      isPastCutoff: false,
+      minutesRemaining: 30,
+      secondsRemaining: 30 * 60,
+    });
     expect(status.message).toContain('30 min remaining');
   });
 
@@ -23,6 +28,7 @@ describe('getTimeWindowStatus', () => {
     const status = getTimeWindowStatus(istDate(20, 30));
     expect(status.isOpen).toBe(true);
     expect(status.minutesRemaining).toBe(30);
+    expect(status.secondsRemaining).toBe(30 * 60);
   });
 
   it('stays open through 9:00 PM', () => {

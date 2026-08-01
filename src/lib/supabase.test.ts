@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const createClient = vi.fn(() => ({ client: true }));
+const createClient = vi.fn<(url: string, key: string) => { client: boolean }>(() => ({
+  client: true,
+}));
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: (url: string, key: string) => createClient(url, key),
@@ -26,6 +28,7 @@ describe('getSupabase', () => {
     const { getSupabase, isSupabaseConfigured } = await configure('', '');
     expect(getSupabase()).toBeNull();
     expect(isSupabaseConfigured()).toBe(false);
+
     expect(createClient).not.toHaveBeenCalled();
   });
 

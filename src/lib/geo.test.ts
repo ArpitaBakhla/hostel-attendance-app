@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getCurrentPosition,
-  getDeviceFingerprint,
+  getDeviceId,
   haversineDistanceM,
   isWithinGeofence,
 } from '@/lib/geo';
@@ -72,7 +72,10 @@ describe('getCurrentPosition', () => {
 
   it('resolves with the position from the browser API', async () => {
     const position = { coords: { latitude: 1, longitude: 2 } };
-    const getCurrentPositionMock = vi.fn((success: (p: unknown) => void) => success(position));
+    const getCurrentPositionMock =
+      vi.fn<(success: (p: unknown) => void, failure?: unknown, options?: unknown) => void>(
+        (success) => success(position),
+      );
     vi.stubGlobal('navigator', {
       ...navigator,
       geolocation: { getCurrentPosition: getCurrentPositionMock },
@@ -99,17 +102,17 @@ describe('getCurrentPosition', () => {
   });
 });
 
-describe('getDeviceFingerprint', () => {
+describe('getDeviceId', () => {
   it('is stable, base64 and capped at 48 characters', () => {
-    const fingerprint = getDeviceFingerprint();
-    expect(fingerprint).toBe(getDeviceFingerprint());
-    expect(fingerprint.length).toBeLessThanOrEqual(48);
-    expect(fingerprint).toMatch(/^[A-Za-z0-9+/=]+$/);
+    const deviceId = getDeviceId();
+    expect(deviceId).toBe(getDeviceId());
+    expect(deviceId.length).toBeLessThanOrEqual(48);
+    expect(deviceId).toMatch(/^[A-Za-z0-9+/=]+$/);
   });
 
   it('changes when the device characteristics change', () => {
-    const original = getDeviceFingerprint();
+    const original = getDeviceId();
     vi.stubGlobal('navigator', { ...navigator, userAgent: 'a-completely-different-agent' });
-    expect(getDeviceFingerprint()).not.toBe(original);
+    expect(getDeviceId()).not.toBe(original);
   });
 });

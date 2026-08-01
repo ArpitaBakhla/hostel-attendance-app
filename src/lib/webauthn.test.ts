@@ -42,13 +42,14 @@ describe('enrollFingerprint', () => {
     const { optionsJSON } = startRegistration.mock.calls[0][0];
     expect(optionsJSON).toMatchObject({
       rp: { name: 'NightCheck', id: 'localhost' },
-      user: { name: 'Arpita', displayName: 'Arpita' },
+      user: { name: 'Arpita', displayName: 'Arpita', id: expect.any(String) },
       authenticatorSelection: {
         authenticatorAttachment: 'platform',
         userVerification: 'required',
       },
     });
-    expect(optionsJSON.challenge).toHaveLength(32);
+    // 32 random bytes, base64url encoded and unpadded.
+    expect(optionsJSON.challenge).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
 });
 
