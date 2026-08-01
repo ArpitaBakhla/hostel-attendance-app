@@ -99,14 +99,43 @@ function defaultData(): AppData {
   };
 }
 
+function parseJson<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as unknown;
+    return value !== null && typeof value === 'object' ? (value as T) : null;
+  } catch {
+    return null;
+  }
+}
+
 function loadData(): AppData {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
+  const stored = parseJson<AppData>(localStorage.getItem(STORAGE_KEY));
+  if (!stored || !Array.isArray(stored.students) || !Array.isArray(stored.hostels)) {
     const data = defaultData();
     saveData(data);
     return data;
   }
-  return JSON.parse(raw) as AppData;
+  return stored;
+}
+
+const MAX_TEXT_LENGTH = 500;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function requireText(value: string, field: string, maxLength = MAX_TEXT_LENGTH): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error(`${field} is required.`);
+  if (trimmed.length > maxLength) {
+    throw new Error(`${field} must be at most ${maxLength} characters.`);
+  }
+  return trimmed;
+}
+
+function requireDate(value: string, field: string): string {
+  if (!DATE_PATTERN.test(value) || Number.isNaN(Date.parse(`${value}T12:00:00`))) {
+    throw new Error(`${field} must be a valid YYYY-MM-DD date.`);
+  }
+  return value;
 }
 
 function saveData(data: AppData): void {
@@ -188,7 +217,9 @@ export const demoStore = {
   },
 
   verifyOtp(_phone: string, otp: string): boolean {
-    return otp === '123456' || import.meta.env.DEV;
+    const demoOtp = import.meta.env.VITE_DEMO_OTP;
+    if (!useDemoMode() || !demoOtp) return false;
+    return otp === demoOtp;
   },
 
   loginStudent(phone: string): SessionUser | null {
@@ -213,7 +244,9 @@ export const demoStore = {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
 
-    const session = JSON.parse(raw) as SessionUser;
+    const session = parseJson<SessionUser>(raw);
+    if (!session) return null;
+
     const data = loadData();
     const student = data.students.find((s) => s.id === session.student?.id);
     if (!student) return null;
@@ -226,7 +259,9 @@ export const demoStore = {
   },
 
   loginWarden(email: string, password: string): WardenSession | null {
-    if (email !== DEFAULT_WARDEN.email || password !== 'warden123') {
+    const demoPassword = import.meta.env.VITE_DEMO_WARDEN_PASSWORD;
+    if (!useDemoMode() || !demoPassword) return null;
+    if (email !== DEFAULT_WARDEN.email || password !== demoPassword) {
       return null;
     }
 
@@ -238,8 +273,7 @@ export const demoStore = {
   },
 
   getWardenSession(): WardenSession | null {
-    const raw = localStorage.getItem(WARDEN_SESSION_KEY);
-    return raw ? (JSON.parse(raw) as WardenSession) : null;
+    return parseJson<WardenSession>(localStorage.getItem(WARDEN_SESSION_KEY));
   },
 
   logoutWarden(): void {
@@ -319,13 +353,18 @@ export const demoStore = {
     const data = loadData();
     const student = getStudent(data, studentId);
 
+    requireDate(fromDate, 'From date');
+    requireDate(toDate, 'To date');
+    if (toDate < fromDate) throw new Error('To date must not be before from date.');
+    const cleanReason = requireText(reason, 'Reason');
+
     const leave: LeaveApplication = {
       id: uid(),
       studentId,
       hostelId: student.hostelId,
       fromDate,
       toDate,
-      reason,
+      reason: cleanReason,
       status: 'pending',
       submittedAt: new Date().toISOString(),
     };
@@ -375,8 +414,8 @@ export const demoStore = {
       id: uid(),
       studentId,
       hostelId: student.hostelId,
-      reason,
-      newDeviceInfo,
+      reason: requireText(reason, 'Reason'),
+      newDeviceInfo: requireText(newDeviceInfo, 'Device info', 200),
       status: 'pending',
       submittedAt: new Date().toISOString(),
     };
@@ -417,7 +456,7 @@ export const demoStore = {
       id: uid(),
       studentId,
       hostelId: student.hostelId,
-      reason,
+      reason: requireText(reason, 'Reason'),
       date: today,
       status: 'pending',
       submittedAt: new Date().toISOString(),
@@ -468,6 +507,8 @@ export const demoStore = {
   ): AttendanceRecord {
     const data = loadData();
     const student = getStudent(data, studentId);
+    requireDate(date, 'Date');
+    requireText(reason, 'Reason');
     const record = getOrCreateAttendance(data, student, date);
 
     if (status === 'absent' && (record.status === 'present' || record.status === 'on_leave')) {
@@ -496,10 +537,10 @@ export const demoStore = {
     const student: Student = {
       id: uid(),
       hostelId,
-      fullName,
-      rollNumber,
-      roomNumber,
-      phone,
+      fullName: requireText(fullName, 'Full name', 120),
+      rollNumber: requireText(rollNumber, 'Roll number', 40),
+      roomNumber: requireText(roomNumber, 'Room number', 40),
+      phone: requireText(phone, 'Phone', 20),
       enrolled: false,
     };
     data.students.push(student);

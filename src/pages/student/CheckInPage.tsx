@@ -37,19 +37,11 @@ export function CheckInPage({ session }: CheckInPageProps) {
         hostel.geofenceRadiusM,
       );
 
-      setLocationVerified(within || import.meta.env.DEV);
-      setLocationLabel(
-        within || import.meta.env.DEV
-          ? 'Inside hostel boundary'
-          : 'Outside hostel boundary',
-      );
+      setLocationVerified(within);
+      setLocationLabel(within ? 'Inside hostel boundary' : 'Outside hostel boundary');
     } catch {
-      setLocationVerified(import.meta.env.DEV);
-      setLocationLabel(
-        import.meta.env.DEV
-          ? 'Location unavailable (demo mode)'
-          : 'Enable location to check in',
-      );
+      setLocationVerified(false);
+      setLocationLabel('Enable location to check in');
     }
   }, [hostel]);
 
@@ -106,18 +98,16 @@ export function CheckInPage({ session }: CheckInPageProps) {
         return;
       }
 
-      let lat = hostel.latitude;
-      let lon = hostel.longitude;
+      let lat: number;
+      let lon: number;
 
       try {
         const position = await getCurrentPosition();
         lat = position.coords.latitude;
         lon = position.coords.longitude;
       } catch {
-        if (!import.meta.env.DEV) {
-          setMessage({ type: 'error', text: 'Location access is required for check-in.' });
-          return;
-        }
+        setMessage({ type: 'error', text: 'Location access is required for check-in.' });
+        return;
       }
 
       const result = demoStore.checkIn(student.id, lat, lon, verified);
