@@ -1,0 +1,13 @@
+project_id = "nightcheck"
+
+[functions.otp-send]
+verify_jwt = false
+
+[functions.otp-verify]
+verify_jwt = false
+
+[functions.device-change-request]
+verify_jwt = false
+
+[functions.malfunction-report]
+verify_jwt = false

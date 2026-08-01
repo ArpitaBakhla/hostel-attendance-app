@@ -1,36 +1,38 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { AlertBanner, FormField, GlassButton, GlassPanel, PageShell, TextInput } from '@/components/ui';
-import { demoStore } from '@/lib/store';
-import type { WardenSession } from '@/types';
+import { api } from '@/lib/api';
 
-interface WardenLoginPageProps {
-  onLogin: (session: WardenSession) => void;
-}
-
-export function WardenLoginPage({ onLogin }: WardenLoginPageProps) {
-  const navigate = useNavigate();
+export function WardenLoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const handleSubmit = () => {
-    const session = demoStore.loginWarden(email.trim(), password);
-    if (!session) {
-      setError('Incorrect email or password.');
-      return;
+  const handleLogin = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.signInWarden(email.trim(), password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign in failed.');
+    } finally {
+      setBusy(false);
     }
-    onLogin(session);
-    navigate('/warden');
   };
 
   return (
     <PageShell>
       <main className="flex flex-grow flex-col items-center justify-center px-[var(--spacing-container-margin-mobile)]">
         <GlassPanel className="flex w-full max-w-md flex-col gap-[var(--spacing-stack-lg)] p-6">
-          <h1 className="font-[family-name:var(--font-headline-md)] text-2xl font-semibold text-primary">
-            Warden sign in
-          </h1>
+          <div className="flex flex-col gap-1">
+            <h1 className="font-[family-name:var(--font-headline-md)] text-2xl font-semibold text-primary">
+              Warden sign in
+            </h1>
+            <p className="font-[family-name:var(--font-body-md)] text-sm text-on-surface-variant">
+              Use the account your hostel administrator created for you.
+            </p>
+          </div>
 
           {error && <AlertBanner type="error" message={error} />}
 
@@ -38,7 +40,6 @@ export function WardenLoginPage({ onLogin }: WardenLoginPageProps) {
             <TextInput
               value={email}
               type="email"
-              autoComplete="username"
               onChange={(event) => setEmail(event.target.value)}
               className="bg-surface-container text-on-surface"
             />
@@ -47,19 +48,18 @@ export function WardenLoginPage({ onLogin }: WardenLoginPageProps) {
             <TextInput
               value={password}
               type="password"
-              autoComplete="current-password"
               onChange={(event) => setPassword(event.target.value)}
               className="bg-surface-container text-on-surface"
             />
           </FormField>
 
-          <GlassButton onClick={handleSubmit} disabled={!email.trim() || !password}>
-            Sign in
+          <GlassButton onClick={handleLogin} disabled={busy || !email.trim() || !password}>
+            {busy ? 'Signing in…' : 'Sign in'}
           </GlassButton>
 
           <Link
             to="/student/login"
-            className="text-center font-[family-name:var(--font-label-md)] text-sm text-primary underline"
+            className="text-center font-[family-name:var(--font-label-md)] text-sm text-on-surface-variant underline"
           >
             Student sign in
           </Link>

@@ -1,48 +1,60 @@
 import { useState } from 'react';
 import { AlertBanner, FormField, GlassButton, TextInput } from '@/components/ui';
-import { demoStore } from '@/lib/store';
-import type { OtpChallenge, OtpPurpose } from '@/types';
+import { api } from '@/lib/api';
+import type { OtpPurpose } from '@/types';
 
 interface OtpFormProps {
-  studentId: string;
+  phoneNumber: string;
   purpose: OtpPurpose;
-  /** Shown above the send button, e.g. what the code is for. */
   description: string;
-  onVerified: () => void;
+  /** Called with the verified challenge id so the caller can spend it. */
+  onVerify: (challengeId: string, code: string) => Promise<void>;
+  submitLabel?: string;
 }
 
-function maskNumber(phone: string): string {
-  return phone.length > 4 ? `${'•'.repeat(phone.length - 4)}${phone.slice(-4)}` : phone;
-}
-
-export function OtpForm({ studentId, purpose, description, onVerified }: OtpFormProps) {
-  const [challenge, setChallenge] = useState<OtpChallenge | null>(null);
+export function OtpForm({
+  phoneNumber,
+  purpose,
+  description,
+  onVerify,
+  submitLabel = 'Verify',
+}: OtpFormProps) {
+  const [challenge, setChallenge] = useState<{ id: string; sentTo: string; code?: string } | null>(
+    null,
+  );
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const handleSend = () => {
-    setSending(true);
+  const handleSend = async () => {
+    setBusy(true);
     setError(null);
     try {
-      setChallenge(demoStore.sendOtp(studentId, purpose));
+      const result = await api.sendOtp(phoneNumber, purpose);
+      if (!result.challengeId) {
+        setError('We could not send a code to that number.');
+        return;
+      }
+      setChallenge({ id: result.challengeId, sentTo: result.sentTo, code: result.code });
       setCode('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send the code.');
     } finally {
-      setSending(false);
+      setBusy(false);
     }
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     if (!challenge) return;
-    const result = demoStore.verifyOtp(challenge.id, code);
-    if (!result.ok) {
-      setError(result.message);
-      return;
-    }
+    setBusy(true);
     setError(null);
-    onVerified();
+    try {
+      await onVerify(challenge.id, code);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Verification failed.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -54,15 +66,19 @@ export function OtpForm({ studentId, purpose, description, onVerified }: OtpForm
           <p className="font-[family-name:var(--font-body-md)] text-sm text-on-surface-variant">
             {description}
           </p>
-          <GlassButton onClick={handleSend} disabled={sending}>
-            {sending ? 'Sending…' : 'Send code'}
+          <GlassButton onClick={handleSend} disabled={busy}>
+            {busy ? 'Sending…' : 'Send code'}
           </GlassButton>
         </>
       ) : (
         <>
           <AlertBanner
             type="info"
-            message={`Code sent to ${maskNumber(challenge.sentTo)}. Demo code: ${challenge.code}`}
+            message={
+              challenge.code
+                ? `Code sent to ${challenge.sentTo}. Demo code: ${challenge.code}`
+                : `Code sent to ${challenge.sentTo}.`
+            }
           />
           <FormField label="6-digit code">
             <TextInput
@@ -74,12 +90,13 @@ export function OtpForm({ studentId, purpose, description, onVerified }: OtpForm
               className="bg-surface-container text-on-surface"
             />
           </FormField>
-          <GlassButton onClick={handleVerify} disabled={code.length !== 6}>
-            Verify
+          <GlassButton onClick={handleVerify} disabled={code.length !== 6 || busy}>
+            {busy ? 'Checking…' : submitLabel}
           </GlassButton>
           <button
             type="button"
             onClick={handleSend}
+            disabled={busy}
             className="font-[family-name:var(--font-label-md)] text-sm text-primary underline"
           >
             Resend code

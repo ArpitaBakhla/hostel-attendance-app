@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { TopAppBar } from '@/components/student/TopAppBar';
 import { BottomNav } from '@/components/student/BottomNav';
 import { AlertBanner, PageShell } from '@/components/ui';
-import { demoStore } from '@/lib/store';
-import { getCurrentPosition, isWithinGeofence } from '@/lib/geo';
+import { api } from '@/lib/api';
+import { getCurrentPosition, haversineDistanceM } from '@/lib/geo';
 import { getTimeWindowStatus } from '@/lib/time-window';
-import { verifyFingerprintOrDemo } from '@/lib/webauthn';
 import type { SessionUser } from '@/types';
 
 interface CheckInPageProps {
@@ -22,121 +22,56 @@ function formatCountdown(totalSeconds: number): string {
 }
 
 export function CheckInPage({ session }: CheckInPageProps) {
+  const { student, hostel } = session;
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(
     null,
   );
-  const [locationVerified, setLocationVerified] = useState(false);
+  const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [locationLabel, setLocationLabel] = useState('Checking location…');
-  const [fingerprintReady, setFingerprintReady] = useState(false);
-  const [timeStatus, setTimeStatus] = useState(getTimeWindowStatus());
+  const [timeStatus, setTimeStatus] = useState(() => getTimeWindowStatus(new Date(), hostel.timezone));
 
-  const student = session.student;
-  const hostel = demoStore.getHostel(student.hostelId);
-  const enrolled = demoStore.isEnrolled(student);
+  const distance =
+    position &&
+    Math.round(
+      haversineDistanceM(position.lat, position.lng, hostel.centerLat, hostel.centerLng),
+    );
+  const locationVerified = distance !== null && distance <= hostel.radiusMeters;
 
-  const verifyLocation = useCallback(async () => {
+  const refreshLocation = useCallback(async () => {
     try {
-      const position = await getCurrentPosition();
-      const within = isWithinGeofence(
-        position.coords.latitude,
-        position.coords.longitude,
-        hostel.centerLat,
-        hostel.centerLng,
-        hostel.radiusMeters,
-      );
-
-      setLocationVerified(within || import.meta.env.DEV);
-      setLocationLabel(
-        within || import.meta.env.DEV
-          ? 'Inside hostel boundary'
-          : 'Outside hostel boundary',
-      );
+      const current = await getCurrentPosition();
+      setPosition({ lat: current.coords.latitude, lng: current.coords.longitude });
+      setLocationLabel('');
     } catch {
-      setLocationVerified(import.meta.env.DEV);
-      setLocationLabel(
-        import.meta.env.DEV
-          ? 'Location unavailable (demo mode)'
-          : 'Enable location to check in',
-      );
+      setPosition(null);
+      setLocationLabel('Enable location to check in');
     }
-  }, [hostel]);
+  }, []);
 
   useEffect(() => {
-    verifyLocation();
+    refreshLocation();
     const interval = setInterval(
       () => setTimeStatus(getTimeWindowStatus(new Date(), hostel.timezone)),
       1000,
     );
     return () => clearInterval(interval);
-  }, [verifyLocation, hostel.timezone]);
-
-  const handleFingerprintTap = async () => {
-    if (!enrolled) {
-      setMessage({
-        type: 'error',
-        text: 'Complete enrollment in Settings before checking in.',
-      });
-      return;
-    }
-
-    setLoading(true);
-    setMessage(null);
-
-    try {
-      const verified = await verifyFingerprintOrDemo(student.webauthnCredentialId);
-      setFingerprintReady(verified);
-      if (!verified) {
-        setMessage({ type: 'error', text: 'Fingerprint verification failed. Try again or report a device issue.' });
-      }
-    } catch {
-      setMessage({ type: 'error', text: 'Fingerprint verification cancelled or failed.' });
-      setFingerprintReady(false);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [refreshLocation, hostel.timezone]);
 
   const handleCheckIn = async () => {
-    if (!timeStatus.isOpen) {
-      setMessage({ type: 'error', text: timeStatus.message });
-      return;
-    }
-
-    if (!locationVerified) {
-      setMessage({ type: 'error', text: 'You must be inside the hostel boundary to check in.' });
-      return;
-    }
-
     setLoading(true);
     setMessage(null);
 
     try {
-      const verified = fingerprintReady || (await verifyFingerprintOrDemo(student.webauthnCredentialId));
-      if (!verified) {
-        setMessage({ type: 'error', text: 'Fingerprint verification required.' });
+      const current = await getCurrentPosition().catch(() => null);
+      if (!current) {
+        setMessage({ type: 'error', text: 'Location access is required for check-in.' });
         return;
       }
+      setPosition({ lat: current.coords.latitude, lng: current.coords.longitude });
 
-      let lat = hostel.centerLat;
-      let lon = hostel.centerLng;
-
-      try {
-        const position = await getCurrentPosition();
-        lat = position.coords.latitude;
-        lon = position.coords.longitude;
-      } catch {
-        if (!import.meta.env.DEV) {
-          setMessage({ type: 'error', text: 'Location access is required for check-in.' });
-          return;
-        }
-      }
-
-      const result = demoStore.checkIn(student.id, lat, lon, verified);
-      setMessage({
-        type: result.success ? 'success' : 'error',
-        text: result.message,
-      });
+      const result = await api.checkIn(current.coords.latitude, current.coords.longitude);
+      setMessage({ type: result.success ? 'success' : 'error', text: result.message });
     } catch (error) {
       setMessage({
         type: 'error',
@@ -176,17 +111,14 @@ export function CheckInPage({ session }: CheckInPageProps) {
           <div className="my-[var(--spacing-stack-lg)] flex flex-col items-center gap-[var(--spacing-stack-sm)]">
             <button
               type="button"
-              onClick={handleFingerprintTap}
-              disabled={loading}
+              onClick={handleCheckIn}
+              disabled={loading || !timeStatus.isOpen}
               className="embossed-disc group relative flex h-48 w-48 cursor-pointer items-center justify-center rounded-full p-4 transition-transform duration-300 active:scale-95 disabled:opacity-60"
             >
               <div className="absolute inset-0 animate-pulse-ring rounded-full border-2 border-emerald/20" />
               <div className="embossed-inner relative flex h-full w-full items-center justify-center overflow-hidden rounded-full">
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-emerald/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 <span
-                  className={`material-symbols-outlined relative z-10 text-[80px] transition-colors duration-300 ${
-                    fingerprintReady ? 'text-emerald' : 'text-on-surface/80 group-hover:text-emerald'
-                  }`}
+                  className="material-symbols-outlined relative z-10 text-[80px] text-on-surface/80 transition-colors duration-300 group-hover:text-emerald"
                   style={{ fontWeight: 200 }}
                 >
                   fingerprint
@@ -194,7 +126,7 @@ export function CheckInPage({ session }: CheckInPageProps) {
               </div>
             </button>
             <p className="mt-4 font-[family-name:var(--font-body-md)] text-base text-on-surface-variant">
-              {fingerprintReady ? 'Fingerprint verified' : 'Touch sensor to verify'}
+              {loading ? 'Verifying…' : 'Touch sensor to check in'}
             </p>
           </div>
 
@@ -208,7 +140,10 @@ export function CheckInPage({ session }: CheckInPageProps) {
                   {locationVerified ? 'Location Verified' : 'Location Pending'}
                 </p>
                 <p className="font-[family-name:var(--font-label-sm)] text-xs normal-case tracking-normal text-on-surface-variant">
-                  {locationLabel}
+                  {locationLabel ||
+                    (distance === null
+                      ? 'Checking location…'
+                      : `${distance}m from hostel centre (limit ${hostel.radiusMeters}m)`)}
                 </p>
               </div>
             </div>
@@ -221,17 +156,16 @@ export function CheckInPage({ session }: CheckInPageProps) {
             )}
           </div>
 
-          <div className="mt-4 w-full">
-            <button
-              type="button"
-              onClick={handleCheckIn}
-              disabled={loading || !timeStatus.isOpen}
-              className="glass-button flex h-14 w-full items-center justify-center gap-2 rounded-full font-[family-name:var(--font-headline-md)] text-lg font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span>{loading ? 'Processing…' : 'Check In Now'}</span>
-              <span className="material-symbols-outlined filled">arrow_forward</span>
-            </button>
-          </div>
+          <Link
+            to="/student/malfunction"
+            className="font-[family-name:var(--font-label-md)] text-sm text-primary underline"
+          >
+            Fingerprint sensor or phone not working?
+          </Link>
+
+          <p className="text-center font-[family-name:var(--font-body-md)] text-xs text-on-surface-variant">
+            Signed in as {student.name} · Room {student.roomNo}
+          </p>
         </div>
       </main>
 

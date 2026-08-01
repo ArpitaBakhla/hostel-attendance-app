@@ -2,21 +2,19 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TopAppBar } from '@/components/student/TopAppBar';
 import { AlertBanner, GlassButton, GlassPanel, PageShell } from '@/components/ui';
-import { OtpForm } from '@/components/OtpForm';
-import { demoStore } from '@/lib/store';
+import { api } from '@/lib/api';
 import { getDeviceId } from '@/lib/geo';
-import { enrollFingerprintOrDemo } from '@/lib/webauthn';
+import { isEnrolled } from '@/lib/session';
 import type { SessionUser } from '@/types';
 
 interface EnrollPageProps {
   session: SessionUser;
-  onSessionUpdate: (session: SessionUser) => void;
+  onEnrolled: () => Promise<void>;
 }
 
-export function EnrollPage({ session, onSessionUpdate }: EnrollPageProps) {
+export function EnrollPage({ session, onEnrolled }: EnrollPageProps) {
   const navigate = useNavigate();
   const student = session.student;
-  const [phoneVerified, setPhoneVerified] = useState(student.phoneVerified);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -27,13 +25,8 @@ export function EnrollPage({ session, onSessionUpdate }: EnrollPageProps) {
     setBusy(true);
     setError(null);
     try {
-      const credential = await enrollFingerprintOrDemo(student.id, student.name);
-      const updated = demoStore.enrollStudent(
-        student.id,
-        credential.credentialId,
-        credential.publicKey,
-      );
-      onSessionUpdate({ profile: session.profile, student: updated });
+      await api.enrollDevice();
+      await onEnrolled();
       navigate('/student/check-in');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fingerprint enrollment failed.');
@@ -58,20 +51,7 @@ export function EnrollPage({ session, onSessionUpdate }: EnrollPageProps) {
 
           {error && <AlertBanner type="error" message={error} />}
 
-          <Step
-            index={1}
-            title="Verify your phone number"
-            done={phoneVerified}
-          >
-            {!phoneVerified && (
-              <OtpForm
-                studentId={student.id}
-                purpose="registration"
-                description="We'll send a code to your primary registered number."
-                onVerified={() => setPhoneVerified(true)}
-              />
-            )}
-          </Step>
+          <Step index={1} title="Phone number verified" done={student.phoneVerified} />
 
           <Step
             index={2}
@@ -88,13 +68,13 @@ export function EnrollPage({ session, onSessionUpdate }: EnrollPageProps) {
                 }
               />
             ) : (
-              <GlassButton onClick={handleEnroll} disabled={!phoneVerified || busy}>
+              <GlassButton onClick={handleEnroll} disabled={!student.phoneVerified || busy}>
                 {busy ? 'Enrolling…' : 'Enroll fingerprint'}
               </GlassButton>
             )}
           </Step>
 
-          {demoStore.isEnrolled(student) && (
+          {isEnrolled(student) && (
             <GlassButton onClick={() => navigate('/student/check-in')}>Go to check-in</GlassButton>
           )}
         </GlassPanel>
