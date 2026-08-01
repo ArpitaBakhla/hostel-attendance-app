@@ -99,6 +99,38 @@ function defaultData(): AppData {
   };
 }
 
+export class StorageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StorageError';
+  }
+}
+
+const APP_DATA_COLLECTIONS: Array<keyof AppData> = [
+  'hostels',
+  'profiles',
+  'students',
+  'attendance',
+  'leaves',
+  'deviceChanges',
+  'deviceIssues',
+];
+
+function isAppData(value: unknown): value is AppData {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return APP_DATA_COLLECTIONS.every((key) => Array.isArray(candidate[key]));
+}
+
+function parseJson<T>(raw: string, label: string): T | null {
+  try {
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    console.error(`[store] Discarding corrupted ${label} in localStorage.`, error);
+    return null;
+  }
+}
+
 function loadData(): AppData {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
@@ -106,11 +138,40 @@ function loadData(): AppData {
     saveData(data);
     return data;
   }
-  return JSON.parse(raw) as AppData;
+
+  const parsed = parseJson<unknown>(raw, 'application data');
+  if (!isAppData(parsed)) {
+    if (parsed !== null) {
+      console.error('[store] Stored application data has an unexpected shape; resetting to defaults.');
+    }
+    const data = defaultData();
+    saveData(data);
+    return data;
+  }
+
+  return parsed;
 }
 
 function saveData(data: AppData): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (error) {
+    console.error('[store] Failed to persist application data.', error);
+    throw new StorageError(
+      'Unable to save your data on this device. Free up storage or disable private browsing, then try again.',
+    );
+  }
+}
+
+function writeSession(key: string, session: unknown, label: string): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(session));
+  } catch (error) {
+    console.error(`[store] Failed to persist ${label}.`, error);
+    throw new StorageError(
+      'Unable to save your session on this device. Free up storage or disable private browsing, then try again.',
+    );
+  }
 }
 
 function getHostel(data: AppData, hostelId: string): Hostel {
@@ -205,7 +266,7 @@ export const demoStore = {
     };
 
     const session: SessionUser = { profile, student };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    writeSession(SESSION_KEY, session, 'student session');
     return session;
   },
 
@@ -213,7 +274,12 @@ export const demoStore = {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
 
-    const session = JSON.parse(raw) as SessionUser;
+    const session = parseJson<SessionUser>(raw, 'student session');
+    if (!session) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+
     const data = loadData();
     const student = data.students.find((s) => s.id === session.student?.id);
     if (!student) return null;
@@ -233,13 +299,21 @@ export const demoStore = {
     const data = loadData();
     const hostel = getHostel(data, DEFAULT_WARDEN.hostelId);
     const session: WardenSession = { profile: DEFAULT_WARDEN, hostel };
-    localStorage.setItem(WARDEN_SESSION_KEY, JSON.stringify(session));
+    writeSession(WARDEN_SESSION_KEY, session, 'warden session');
     return session;
   },
 
   getWardenSession(): WardenSession | null {
     const raw = localStorage.getItem(WARDEN_SESSION_KEY);
-    return raw ? (JSON.parse(raw) as WardenSession) : null;
+    if (!raw) return null;
+
+    const session = parseJson<WardenSession>(raw, 'warden session');
+    if (!session) {
+      localStorage.removeItem(WARDEN_SESSION_KEY);
+      return null;
+    }
+
+    return session;
   },
 
   logoutWarden(): void {
