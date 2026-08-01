@@ -141,6 +141,18 @@ function isAppData(value: unknown): value is AppData {
   return APP_DATA_COLLECTIONS.every((key) => Array.isArray(candidate[key]));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isSessionUser(value: unknown): value is SessionUser {
+  return isRecord(value) && isRecord(value.profile) && isRecord(value.student);
+}
+
+function isWardenSession(value: unknown): value is WardenSession {
+  return isRecord(value) && isRecord(value.profile) && isRecord(value.hostel);
+}
+
 function parseJson<T>(raw: string, label: string): T | null {
   try {
     return JSON.parse(raw) as T;
@@ -150,22 +162,26 @@ function parseJson<T>(raw: string, label: string): T | null {
   }
 }
 
+function resetToDefaults(): AppData {
+  const data = defaultData();
+  try {
+    saveData(data);
+  } catch (error) {
+    console.error('[store] Failed to persist default application data; continuing in memory.', error);
+  }
+  return data;
+}
+
 function loadData(): AppData {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    const data = defaultData();
-    saveData(data);
-    return data;
-  }
+  if (!raw) return resetToDefaults();
 
   const parsed = parseJson<unknown>(raw, 'application data');
   if (!isAppData(parsed)) {
     if (parsed !== null) {
       console.error('[store] Stored application data has an unexpected shape; resetting to defaults.');
     }
-    const data = defaultData();
-    saveData(data);
-    return data;
+    return resetToDefaults();
   }
 
   return parsed;
@@ -362,8 +378,11 @@ export const demoStore = {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
 
-    const session = parseJson<SessionUser>(raw, 'student session');
-    if (!session) {
+    const session = parseJson<unknown>(raw, 'student session');
+    if (!isSessionUser(session)) {
+      if (session !== null) {
+        console.error('[store] Stored student session has an unexpected shape; discarding it.');
+      }
       localStorage.removeItem(SESSION_KEY);
       return null;
     }
@@ -394,8 +413,11 @@ export const demoStore = {
     const raw = localStorage.getItem(WARDEN_SESSION_KEY);
     if (!raw) return null;
 
-    const session = parseJson<WardenSession>(raw, 'warden session');
-    if (!session) {
+    const session = parseJson<unknown>(raw, 'warden session');
+    if (!isWardenSession(session)) {
+      if (session !== null) {
+        console.error('[store] Stored warden session has an unexpected shape; discarding it.');
+      }
       localStorage.removeItem(WARDEN_SESSION_KEY);
       return null;
     }

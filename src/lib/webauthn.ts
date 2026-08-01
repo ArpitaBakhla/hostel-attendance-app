@@ -2,6 +2,7 @@ import {
   startRegistration,
   startAuthentication,
   browserSupportsWebAuthn,
+  WebAuthnError,
 } from '@simplewebauthn/browser';
 import { getErrorMessage } from '@/lib/errors';
 
@@ -72,6 +73,13 @@ export type FingerprintResult =
   | { verified: false; reason: FingerprintFailure; message: string };
 
 function isUserCancellation(error: unknown): boolean {
+  if (error instanceof WebAuthnError) {
+    // Cancellations surface either as an aborted ceremony or as a passthrough of the DOM exception.
+    return (
+      error.code === 'ERROR_CEREMONY_ABORTED' ||
+      isUserCancellation((error as { cause?: unknown }).cause)
+    );
+  }
   return (
     error instanceof Error &&
     (error.name === 'NotAllowedError' || error.name === 'AbortError')
