@@ -9,6 +9,8 @@ export interface TimeWindowStatus {
   isPastCutoff: boolean;
   message: string;
   minutesRemaining?: number;
+  /** Seconds until the window closes (when open) or opens (when not yet open). */
+  secondsRemaining?: number;
 }
 
 export function getTimeWindowStatus(now = new Date(), timezone = 'Asia/Kolkata'): TimeWindowStatus {
@@ -16,12 +18,15 @@ export function getTimeWindowStatus(now = new Date(), timezone = 'Asia/Kolkata')
     timeZone: timezone,
     hour: 'numeric',
     minute: 'numeric',
+    second: 'numeric',
     hour12: false,
   });
   const parts = formatter.formatToParts(now);
   const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
   const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+  const second = Number(parts.find((p) => p.type === 'second')?.value ?? 0);
   const totalMinutes = hour * 60 + minute;
+  const totalSeconds = totalMinutes * 60 + second;
 
   const start = CHECK_IN_START_HOUR * 60 + CHECK_IN_START_MINUTE;
   const end = CHECK_IN_END_HOUR * 60 + CHECK_IN_END_MINUTE;
@@ -41,16 +46,18 @@ export function getTimeWindowStatus(now = new Date(), timezone = 'Asia/Kolkata')
       isOpen: false,
       isPastCutoff: false,
       message: `Check-in opens at 8:30 PM (${minutesUntilOpen} min remaining).`,
+      minutesRemaining: minutesUntilOpen,
+      secondsRemaining: start * 60 - totalSeconds,
     };
   }
 
   if (totalMinutes <= end) {
-    const minutesRemaining = end - totalMinutes;
     return {
       isOpen: true,
       isPastCutoff: false,
       message: 'Check-in open until 9:00 PM',
-      minutesRemaining,
+      minutesRemaining: end - totalMinutes,
+      secondsRemaining: end * 60 - totalSeconds,
     };
   }
 

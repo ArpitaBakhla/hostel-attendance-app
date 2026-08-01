@@ -11,7 +11,15 @@ import type { SessionUser } from '@/types';
 
 interface CheckInPageProps {
   session: SessionUser;
-  onSessionUpdate: (session: SessionUser) => void;
+}
+
+function formatCountdown(totalSeconds: number): string {
+  const safe = Math.max(0, totalSeconds);
+  const hrs = Math.floor(safe / 3600);
+  const mins = Math.floor((safe % 3600) / 60);
+  const secs = safe % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return hrs > 0 ? `${hrs}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
 }
 
 export function CheckInPage({ session }: CheckInPageProps) {
@@ -24,8 +32,9 @@ export function CheckInPage({ session }: CheckInPageProps) {
   const [fingerprintReady, setFingerprintReady] = useState(false);
   const [timeStatus, setTimeStatus] = useState(getTimeWindowStatus());
 
-  const student = session.student!;
+  const student = session.student;
   const hostel = demoStore.getHostel(student.hostelId);
+  const enrolled = demoStore.isEnrolled(student);
 
   const verifyLocation = useCallback(async () => {
     try {
@@ -33,9 +42,9 @@ export function CheckInPage({ session }: CheckInPageProps) {
       const within = isWithinGeofence(
         position.coords.latitude,
         position.coords.longitude,
-        hostel.latitude,
-        hostel.longitude,
-        hostel.geofenceRadiusM,
+        hostel.centerLat,
+        hostel.centerLng,
+        hostel.radiusMeters,
       );
 
       setLocationVerified(within || import.meta.env.DEV);
@@ -57,12 +66,15 @@ export function CheckInPage({ session }: CheckInPageProps) {
 
   useEffect(() => {
     verifyLocation();
-    const interval = setInterval(() => setTimeStatus(getTimeWindowStatus()), 30000);
+    const interval = setInterval(
+      () => setTimeStatus(getTimeWindowStatus(new Date(), hostel.timezone)),
+      1000,
+    );
     return () => clearInterval(interval);
-  }, [verifyLocation]);
+  }, [verifyLocation, hostel.timezone]);
 
   const handleFingerprintTap = async () => {
-    if (!student.enrolled) {
+    if (!enrolled) {
       setMessage({
         type: 'error',
         text: 'Complete enrollment in Settings before checking in.',
@@ -117,8 +129,8 @@ export function CheckInPage({ session }: CheckInPageProps) {
         setFingerprintReady(true);
       }
 
-      let lat = hostel.latitude;
-      let lon = hostel.longitude;
+      let lat = hostel.centerLat;
+      let lon = hostel.centerLng;
 
       try {
         const position = await getCurrentPosition();
@@ -151,9 +163,12 @@ export function CheckInPage({ session }: CheckInPageProps) {
     }
   };
 
-  const bannerMessage = timeStatus.isOpen
-    ? 'Check-in open until 9:00 PM'
-    : timeStatus.message;
+  const bannerMessage =
+    timeStatus.secondsRemaining === undefined
+      ? timeStatus.message
+      : timeStatus.isOpen
+        ? `Closes in ${formatCountdown(timeStatus.secondsRemaining)}`
+        : `Opens in ${formatCountdown(timeStatus.secondsRemaining)}`;
 
   return (
     <PageShell>

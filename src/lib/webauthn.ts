@@ -5,20 +5,30 @@ import {
 } from '@simplewebauthn/browser';
 import { getErrorMessage } from '@/lib/errors';
 
+function base64url(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function randomChallenge(): string {
+  return base64url(crypto.getRandomValues(new Uint8Array(32)));
+}
+
 export function isWebAuthnSupported(): boolean {
   return browserSupportsWebAuthn();
 }
 
 export async function enrollFingerprint(userId: string, userName: string) {
-  const challenge = crypto.getRandomValues(new Uint8Array(32));
   const options = {
-    challenge,
+    challenge: randomChallenge(),
     rp: {
       name: 'NightCheck',
       id: window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname,
     },
     user: {
-      id: new TextEncoder().encode(userId),
+      id: base64url(new TextEncoder().encode(userId)),
       name: userName,
       displayName: userName,
     },
@@ -40,9 +50,8 @@ export async function enrollFingerprint(userId: string, userName: string) {
 }
 
 export async function verifyFingerprint(credentialId: string) {
-  const challenge = crypto.getRandomValues(new Uint8Array(32));
   const options = {
-    challenge,
+    challenge: randomChallenge(),
     rpId: window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname,
     allowCredentials: [{ id: credentialId, type: 'public-key' as const }],
     userVerification: 'required' as const,
