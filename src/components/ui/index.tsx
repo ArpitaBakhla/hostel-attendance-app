@@ -37,17 +37,29 @@ export function GlassButton({
 }
 
 interface StatusBadgeProps {
-  status: 'present' | 'absent' | 'on_leave' | 'excused' | 'pending' | 'approved' | 'denied';
+  status:
+    | 'success'
+    | 'failed'
+    | 'manual_override'
+    | 'on_leave'
+    | 'absent'
+    | 'pending'
+    | 'approved'
+    | 'rejected';
 }
 
 const statusConfig = {
-  present: { label: 'Present', color: 'text-emerald bg-emerald/10 border-emerald/30' },
-  absent: { label: 'Absent', color: 'text-error bg-error/10 border-error/30' },
+  success: { label: 'Present', color: 'text-emerald bg-emerald/10 border-emerald/30' },
+  failed: { label: 'Failed', color: 'text-error bg-error/10 border-error/30' },
+  manual_override: {
+    label: 'Manual Override',
+    color: 'text-secondary bg-secondary/10 border-secondary/30',
+  },
   on_leave: { label: 'On Leave', color: 'text-tertiary bg-tertiary/10 border-tertiary/30' },
-  excused: { label: 'Excused', color: 'text-secondary bg-secondary/10 border-secondary/30' },
+  absent: { label: 'Absent', color: 'text-error bg-error/10 border-error/30' },
   pending: { label: 'Pending', color: 'text-on-surface-variant bg-white/5 border-white/10' },
   approved: { label: 'Approved', color: 'text-emerald bg-emerald/10 border-emerald/30' },
-  denied: { label: 'Denied', color: 'text-error bg-error/10 border-error/30' },
+  rejected: { label: 'Rejected', color: 'text-error bg-error/10 border-error/30' },
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {

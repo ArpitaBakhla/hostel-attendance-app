@@ -40,7 +40,8 @@ export async function getCurrentPosition(): Promise<GeolocationPosition> {
   });
 }
 
-export function getDeviceFingerprint(): string {
+/** Stable per-device identifier used for device binding. */
+export function getDeviceId(): string {
   const parts = [
     navigator.userAgent,
     navigator.language,
