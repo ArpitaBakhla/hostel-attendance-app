@@ -24,8 +24,8 @@ export interface Student {
   name: string;
   room_no: string;
   roll_number: string;
-  phone_number: string;
-  secondary_contact_number: string | null;
+  email: string;
+  secondary_email: string | null;
   registered_device_id: string | null;
   webauthn_credential_id: string | null;
   webauthn_public_key: string | null;

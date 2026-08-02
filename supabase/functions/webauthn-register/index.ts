@@ -23,7 +23,7 @@ Deno.serve(handler(async (req) => {
   const { rpID, origin } = rpConfig();
 
   if (!student.phone_verified) {
-    return fail('Verify your phone number before enrolling a fingerprint.', 403);
+    return fail('Verify your email before enrolling a fingerprint.', 403);
   }
   if (student.registered_device_id) {
     return fail(

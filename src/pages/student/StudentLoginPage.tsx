@@ -5,7 +5,7 @@ import { OtpForm } from '@/components/OtpForm';
 import { api } from '@/lib/api';
 
 export function StudentLoginPage() {
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
   return (
@@ -17,32 +17,32 @@ export function StudentLoginPage() {
               NightCheck
             </h1>
             <p className="font-[family-name:var(--font-body-md)] text-sm text-on-surface-variant">
-              Sign in with your registered phone number.
+              Sign in with your registered email address.
             </p>
           </div>
 
           {!submitted ? (
             <>
-              <FormField label="Phone number">
+              <FormField label="Email address">
                 <TextInput
-                  value={phone}
-                  inputMode="tel"
-                  placeholder="+91XXXXXXXXXX"
-                  onChange={(event) => setPhone(event.target.value)}
+                  value={email}
+                  type="email"
+                  placeholder="student@example.com"
+                  onChange={(event) => setEmail(event.target.value)}
                   className="bg-surface-container text-on-surface"
                 />
               </FormField>
-              <GlassButton onClick={() => setSubmitted(true)} disabled={!phone.trim()}>
+              <GlassButton onClick={() => setSubmitted(true)} disabled={!email.trim()}>
                 Continue
               </GlassButton>
             </>
           ) : (
             <OtpForm
-              phoneNumber={phone.trim()}
+              recipient={email.trim()}
               purpose="login"
-              description="We'll text a code to your registered number."
+              description="We'll email a code to your registered address."
               submitLabel="Sign in"
-              onVerify={(challengeId, code) => api.verifyOtpAndSignIn(challengeId, code)}
+              onVerify={(recipient, code) => api.verifyOtpAndSignIn(recipient, code)}
             />
           )}
 

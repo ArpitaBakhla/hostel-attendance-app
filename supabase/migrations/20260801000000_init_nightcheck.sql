@@ -46,8 +46,8 @@ create table students (
   name text not null,
   room_no text not null,
   roll_number text not null,
-  phone_number text not null,
-  secondary_contact_number text,
+  email text not null,
+  secondary_email text,
   registered_device_id text,
   webauthn_credential_id text,
   webauthn_public_key text,
@@ -57,7 +57,7 @@ create table students (
   onboarded_by uuid references profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   unique (hostel_id, roll_number),
-  unique (hostel_id, phone_number)
+  unique (hostel_id, email)
 );
 
 create table attendance_logs (

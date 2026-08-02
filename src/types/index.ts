@@ -34,8 +34,8 @@ export interface Student {
   name: string;
   roomNo: string;
   rollNumber: string;
-  phoneNumber: string;
-  secondaryContactNumber?: string;
+  email: string;
+  secondaryEmail?: string;
   registeredDeviceId?: string;
   webauthnCredentialId?: string;
   webauthnPublicKey?: string;

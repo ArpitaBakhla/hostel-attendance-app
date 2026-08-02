@@ -26,18 +26,28 @@ interface OtpSendResponse {
 export const api = {
   // --- auth ----------------------------------------------------------------
 
-  sendOtp(phoneNumber: string, purpose: OtpPurpose): Promise<OtpSendResponse> {
-    return callFunction<OtpSendResponse>('otp-send', { phoneNumber, purpose });
+  sendOtp(email: string, purpose: OtpPurpose): Promise<OtpSendResponse> {
+    return callFunction<OtpSendResponse>('otp-send', { email, purpose });
   },
 
   /** Verifies a registration/login code and starts a Supabase session. */
-  async verifyOtpAndSignIn(challengeId: string, code: string): Promise<void> {
-    const { tokenHash } = await callFunction<{ tokenHash: string }>('otp-verify', {
-      challengeId,
+  async verifyOtpAndSignIn(email: string, code: string): Promise<void> {
+    const { accessToken, refreshToken } = await callFunction<{
+      accessToken?: string;
+      refreshToken?: string;
+    }>('otp-verify', {
+      email,
       code,
     });
 
-    const { error } = await supabase().auth.verifyOtp({ token_hash: tokenHash, type: 'email' });
+    if (!accessToken || !refreshToken) {
+      throw new Error('The verification response was incomplete.');
+    }
+
+    const { error } = await supabase().auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
     if (error) throw error;
   },
 
@@ -266,8 +276,8 @@ export const api = {
     name: string;
     rollNumber: string;
     roomNo: string;
-    phoneNumber: string;
-    secondaryContactNumber?: string;
+    email: string;
+    secondaryEmail?: string;
   }): Promise<{ studentId: string }> {
     return callFunction('warden-action', { action: 'add-student', ...input });
   },
@@ -295,8 +305,8 @@ function toStudent(row: Row): Student {
     name: row.name as string,
     roomNo: row.room_no as string,
     rollNumber: row.roll_number as string,
-    phoneNumber: row.phone_number as string,
-    secondaryContactNumber: (row.secondary_contact_number as string) ?? undefined,
+    email: row.email as string,
+    secondaryEmail: (row.secondary_email as string) ?? undefined,
     registeredDeviceId: (row.registered_device_id as string) ?? undefined,
     webauthnCredentialId: (row.webauthn_credential_id as string) ?? undefined,
     overrideCount: row.override_count as number,

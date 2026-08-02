@@ -4,16 +4,16 @@ import { api } from '@/lib/api';
 import type { OtpPurpose } from '@/types';
 
 interface OtpFormProps {
-  phoneNumber: string;
+  recipient: string;
   purpose: OtpPurpose;
   description: string;
-  /** Called with the verified challenge id so the caller can spend it. */
-  onVerify: (challengeId: string, code: string) => Promise<void>;
+  /** Called with the verified recipient and code so the caller can complete the auth step. */
+  onVerify: (recipient: string, code: string) => Promise<void>;
   submitLabel?: string;
 }
 
 export function OtpForm({
-  phoneNumber,
+  recipient,
   purpose,
   description,
   onVerify,
@@ -30,9 +30,9 @@ export function OtpForm({
     setBusy(true);
     setError(null);
     try {
-      const result = await api.sendOtp(phoneNumber, purpose);
+      const result = await api.sendOtp(recipient, purpose);
       if (!result.challengeId) {
-        setError('We could not send a code to that number.');
+        setError('We could not send a code to that address.');
         return;
       }
       setChallenge({ id: result.challengeId, sentTo: result.sentTo, code: result.code });
@@ -49,7 +49,7 @@ export function OtpForm({
     setBusy(true);
     setError(null);
     try {
-      await onVerify(challenge.id, code);
+      await onVerify(recipient, code);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed.');
     } finally {

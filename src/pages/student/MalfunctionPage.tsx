@@ -19,13 +19,13 @@ const CHOICES: Array<{ id: Choice; title: string; blurb: string }> = [
   {
     id: 'tier1',
     title: 'My fingerprint sensor is broken (phone still works)',
-    blurb: 'We text a code to your own registered number to confirm it is you.',
+    blurb: 'We email a code to your own registered address to confirm it is you.',
   },
   {
     id: 'tier2',
     title: 'My phone is dead or lost',
     blurb:
-      'We text a code to your pre-registered secondary contact. You can also simply walk to the warden.',
+      'We email a code to your pre-registered secondary address. You can also simply walk to the warden.',
   },
   {
     id: 'tier3',
@@ -46,7 +46,7 @@ interface MalfunctionPageProps {
 
 export function MalfunctionPage({ session }: MalfunctionPageProps) {
   const [choice, setChoice] = useState<Choice | null>(null);
-  const [phone, setPhone] = useState(session?.student.phoneNumber ?? '');
+  const [email, setEmail] = useState(session?.student.email ?? '');
   const [reason, setReason] = useState('');
   const [rollNumber, setRollNumber] = useState('');
   const [result, setResult] = useState<string | null>(null);
@@ -115,12 +115,12 @@ export function MalfunctionPage({ session }: MalfunctionPageProps) {
 
           {choice && !result && choice !== 'tier3' && (
             <div className="flex flex-col gap-[var(--spacing-stack-sm)]">
-              <FormField label="Your registered phone number">
+              <FormField label="Your registered email address">
                 <TextInput
-                  value={phone}
-                  inputMode="tel"
-                  placeholder="+91XXXXXXXXXX"
-                  onChange={(event) => setPhone(event.target.value)}
+                  value={email}
+                  type="email"
+                  placeholder="student@example.com"
+                  onChange={(event) => setEmail(event.target.value)}
                   className="bg-surface-container text-on-surface"
                 />
               </FormField>
@@ -132,9 +132,9 @@ export function MalfunctionPage({ session }: MalfunctionPageProps) {
                 />
               </FormField>
 
-              {phone.trim() && reason.trim() && (
+              {email.trim() && reason.trim() && (
                 <OtpForm
-                  phoneNumber={phone.trim()}
+                  recipient={email.trim()}
                   purpose={
                     choice === 'tier1'
                       ? 'tier1_self_report'
@@ -144,22 +144,22 @@ export function MalfunctionPage({ session }: MalfunctionPageProps) {
                   }
                   description={
                     choice === 'tier2'
-                      ? 'We will text your secondary contact number.'
-                      : 'We will text your primary registered number.'
+                      ? 'We will email your secondary address.'
+                      : 'We will email your primary registered address.'
                   }
                   submitLabel="Submit report"
-                  onVerify={async (challengeId, code) => {
+                  onVerify={async (recipient, code) => {
                     const response =
                       choice === 'device-change'
                         ? await api.requestDeviceChange({
-                            challengeId,
+                            challengeId: recipient,
                             code,
                             reason: reason.trim(),
                           })
                         : await api.reportMalfunction({
                             tier: choice,
                             reason: reason.trim(),
-                            challengeId,
+                            challengeId: recipient,
                             code,
                           });
                     setResult(response.message);
