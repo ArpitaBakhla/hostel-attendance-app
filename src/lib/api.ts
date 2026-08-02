@@ -5,6 +5,8 @@ import type {
 } from '@simplewebauthn/browser';
 import { callFunction, supabase } from '@/lib/supabase';
 import { getDeviceId } from '@/lib/geo';
+import { queueCheckIn, getPendingCount } from '@/lib/offline-store';
+import { syncPendingCheckIns, getSyncStatus } from '@/lib/sync-manager';
 import type {
   AttendanceLog,
   DeviceChangeRequest,
@@ -101,30 +103,80 @@ export const api = {
     });
   },
 
-  // --- check-in ------------------------------------------------------------
+  // --- check-in (with offline fallback) ------------------------------------
 
   async checkIn(
     gpsLat: number,
     gpsLng: number,
-  ): Promise<{ success: boolean; message: string; failReason?: string }> {
-    const options = await callFunction<
-      PublicKeyCredentialRequestOptionsJSON & { success?: boolean; message?: string }
-    >('check-in', { step: 'options' });
-
-    // The server short-circuits (and logs a failure) before issuing options
-    // when the window is closed or the student is not enrolled.
-    if (options.success === false) {
-      return options as { success: boolean; message: string; failReason?: string };
+  ): Promise<{ success: boolean; message: string; failReason?: string; offline?: boolean }> {
+    // If offline, queue immediately
+    if (!navigator.onLine) {
+      await queueCheckIn({
+        attemptedAt: new Date().toISOString(),
+        gpsLat,
+        gpsLng,
+        deviceId: getDeviceId(),
+      });
+      return {
+        success: true,
+        message: 'You are offline. Check-in saved and will sync when connectivity resumes.',
+        offline: true,
+      };
     }
 
-    const response = await startAuthentication({ optionsJSON: options });
-    return callFunction('check-in', {
-      step: 'verify',
-      response,
-      deviceId: getDeviceId(),
-      gpsLat,
-      gpsLng,
-    });
+    try {
+      const options = await callFunction<
+        PublicKeyCredentialRequestOptionsJSON & { success?: boolean; message?: string }
+      >('check-in', { step: 'options' });
+
+      // The server short-circuits (and logs a failure) before issuing options
+      // when the window is closed or the student is not enrolled.
+      if (options.success === false) {
+        return options as { success: boolean; message: string; failReason?: string };
+      }
+
+      const response = await startAuthentication({ optionsJSON: options });
+      return callFunction('check-in', {
+        step: 'verify',
+        response,
+        deviceId: getDeviceId(),
+        gpsLat,
+        gpsLng,
+      });
+    } catch (err) {
+      // Network error — queue for offline sync
+      if (isNetworkError(err)) {
+        await queueCheckIn({
+          attemptedAt: new Date().toISOString(),
+          gpsLat,
+          gpsLng,
+          deviceId: getDeviceId(),
+        });
+        return {
+          success: true,
+          message: 'Network error. Check-in saved locally and will sync automatically.',
+          offline: true,
+        };
+      }
+      throw err;
+    }
+  },
+
+  // --- offline sync --------------------------------------------------------
+
+  /** Manually trigger sync of pending offline check-ins. */
+  async syncPending(): Promise<{ synced: number; failed: number }> {
+    return syncPendingCheckIns();
+  },
+
+  /** Get the count of pending offline check-ins (for badge display). */
+  async getOfflinePendingCount(): Promise<number> {
+    return getPendingCount();
+  },
+
+  /** Get full sync status. */
+  async getSyncStatus() {
+    return getSyncStatus();
   },
 
   // --- fallback tiers ------------------------------------------------------
@@ -272,6 +324,15 @@ export const api = {
     return callFunction('warden-action', { action: 'add-student', ...input });
   },
 };
+
+// --- helpers ---------------------------------------------------------------
+
+function isNetworkError(err: unknown): boolean {
+  if (err instanceof TypeError && err.message.includes('fetch')) return true;
+  if (err instanceof DOMException && err.name === 'NetworkError') return true;
+  if (err instanceof Error && err.message.includes('network')) return true;
+  return !navigator.onLine;
+}
 
 // --- row mappers -----------------------------------------------------------
 

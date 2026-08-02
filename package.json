@@ -1,13 +1,17 @@
 {
   "name": "nightcheck",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:stress": "bash tests/stress/run-all.sh",
+    "test:stress:checkin": "npx tsx tests/stress/concurrent-checkin.ts",
+    "test:stress:integrity": "npx tsx tests/stress/data-integrity.ts",
+    "test:stress:backup": "npx tsx tests/stress/backup-verification.ts"
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.1.0",
@@ -28,6 +32,7 @@
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^15.15.0",
     "tailwindcss": "^4.0.14",
+    "tsx": "^4.19.0",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.24.1",
     "vite": "^6.2.0",

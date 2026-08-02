@@ -1,6 +1,7 @@
 import { adminClient, getHostel, requireWarden } from '../_shared/db.ts';
-import { fail, handler, json } from '../_shared/http.ts';
+import { fail, handler, json, checkRateLimit, getClientIp } from '../_shared/http.ts';
 import { localDate } from '../_shared/attendance.ts';
+import { encryptField } from '../_shared/crypto.ts';
 
 function datesBetween(startDate: string, endDate: string): string[] {
   const dates: string[] = [];
@@ -14,10 +15,19 @@ function datesBetween(startDate: string, endDate: string): string[] {
   return dates;
 }
 
+/**
+ * Checks if encryption is configured (graceful fallback if not).
+ */
+function isEncryptionEnabled(): boolean {
+  const key = Deno.env.get('ENCRYPTION_MASTER_KEY');
+  return Boolean(key && key.length === 64);
+}
+
 /** All warden-only mutations. */
 Deno.serve(handler(async (req) => {
   const warden = await requireWarden(req);
   const db = adminClient();
+  const clientIp = getClientIp(req);
   const body = (await req.json()) as {
     action?: string;
     studentId?: string;
@@ -26,6 +36,11 @@ Deno.serve(handler(async (req) => {
     requestId?: string;
     decision?: 'approved' | 'rejected';
   };
+
+  // Rate limiting for warden actions: 30 actions per minute
+  if (!checkRateLimit(`warden:${warden.id}`, 30, 60_000)) {
+    return fail('Too many requests. Please wait.', 429);
+  }
 
   switch (body.action) {
     /**
@@ -68,6 +83,7 @@ Deno.serve(handler(async (req) => {
         .update({ override_count: student.override_count + 1 })
         .eq('id', student.id);
 
+      console.log(`[warden] MARK-PRESENT student=${body.studentId} by=${warden.id} ip=${clientIp}`);
       return json({ marked: true, overrideCount: student.override_count + 1 });
     }
 
@@ -87,6 +103,7 @@ Deno.serve(handler(async (req) => {
 
       // Resolving a report never marks attendance on its own — the warden must
       // physically verify the student and use mark-present.
+      console.log(`[warden] REVIEW-MALFUNCTION req=${body.requestId} decision=${body.decision} by=${warden.id}`);
       return json({ reviewed: true });
     }
 
@@ -124,6 +141,7 @@ Deno.serve(handler(async (req) => {
           .eq('id', request.student_id);
       }
 
+      console.log(`[warden] REVIEW-DEVICE-CHANGE req=${body.requestId} decision=${body.decision} by=${warden.id}`);
       return json({ reviewed: true });
     }
 
@@ -186,6 +204,7 @@ Deno.serve(handler(async (req) => {
         }
       }
 
+      console.log(`[warden] REVIEW-LEAVE req=${body.requestId} decision=${body.decision} by=${warden.id}`);
       return json({ reviewed: true });
     }
 
@@ -201,6 +220,19 @@ Deno.serve(handler(async (req) => {
         return fail('name, rollNumber, roomNo and phoneNumber are required');
       }
 
+      // Encrypt PII fields if encryption is configured
+      let encryptedPhone: string | null = null;
+      let encryptedName: string | null = null;
+
+      if (isEncryptionEnabled()) {
+        try {
+          encryptedPhone = await encryptField(input.phoneNumber.trim());
+          encryptedName = await encryptField(input.name.trim());
+        } catch (err) {
+          console.warn('[warden] PII encryption failed, storing plaintext:', err);
+        }
+      }
+
       const { data, error } = await db
         .from('students')
         .insert({
@@ -211,6 +243,9 @@ Deno.serve(handler(async (req) => {
           phone_number: input.phoneNumber.trim(),
           secondary_contact_number: input.secondaryContactNumber?.trim() || null,
           onboarded_by: warden.id,
+          encrypted_phone: encryptedPhone,
+          encrypted_name: encryptedName,
+          encryption_key_id: isEncryptionEnabled() ? 'v1' : null,
         })
         .select('id')
         .single();
@@ -222,6 +257,7 @@ Deno.serve(handler(async (req) => {
             : error.message,
         );
       }
+      console.log(`[warden] ADD-STUDENT id=${data.id} by=${warden.id} ip=${clientIp}`);
       return json({ studentId: data.id });
     }
 

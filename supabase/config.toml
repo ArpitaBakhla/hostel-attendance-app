@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.malfunction-report]
 verify_jwt = false
+
+[functions.backup-snapshot]
+verify_jwt = false

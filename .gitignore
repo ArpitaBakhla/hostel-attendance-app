@@ -4,4 +4,9 @@ dev-dist
 *.local
 .env
 .env.*
+!.env.example
 .DS_Store
+supabase/.temp/
+*.log
+coverage/
+.nyc_output/

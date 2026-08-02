@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from './deps.ts';
+import { decryptField } from './crypto.ts';
 
 export function adminClient(): SupabaseClient {
   return createClient(
@@ -32,6 +33,10 @@ export interface Student {
   webauthn_counter: number;
   phone_verified: boolean;
   override_count: number;
+  // Encrypted PII fields
+  encrypted_phone: string | null;
+  encrypted_name: string | null;
+  encryption_key_id: string | null;
 }
 
 export interface HostelCenter {
@@ -85,4 +90,26 @@ export async function getHostel(hostelId: string): Promise<HostelCenter> {
 
   if (error) throw error;
   return data as HostelCenter;
+}
+
+/**
+ * Decrypt PII fields on a student record, falling back to plaintext if
+ * no encrypted version exists (backward compatibility during migration).
+ */
+export async function decryptStudentPii(student: Student): Promise<Student> {
+  const result = { ...student };
+
+  try {
+    if (student.encrypted_name) {
+      result.name = await decryptField(student.encrypted_name);
+    }
+    if (student.encrypted_phone) {
+      result.phone_number = await decryptField(student.encrypted_phone);
+    }
+  } catch (err) {
+    // If decryption fails (key rotation, corruption), fall back to plaintext
+    console.warn(`[db] PII decryption failed for student ${student.id}:`, err);
+  }
+
+  return result;
 }
