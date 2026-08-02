@@ -14,8 +14,8 @@ const EMPTY = {
   name: '',
   rollNumber: '',
   roomNo: '',
-  phoneNumber: '',
-  secondaryContactNumber: '',
+  email: '',
+  secondaryEmail: '',
 };
 
 export function AddStudentPage() {
@@ -28,7 +28,7 @@ export function AddStudentPage() {
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
 
   const complete =
-    form.name.trim() && form.rollNumber.trim() && form.roomNo.trim() && form.phoneNumber.trim();
+    form.name.trim() && form.rollNumber.trim() && form.roomNo.trim() && form.email.trim();
 
   const handleSubmit = async () => {
     setError(null);
@@ -39,11 +39,11 @@ export function AddStudentPage() {
         name: form.name.trim(),
         rollNumber: form.rollNumber.trim(),
         roomNo: form.roomNo.trim(),
-        phoneNumber: form.phoneNumber.trim(),
-        secondaryContactNumber: form.secondaryContactNumber.trim() || undefined,
+        email: form.email.trim(),
+        secondaryEmail: form.secondaryEmail.trim() || undefined,
       });
       setSuccess(
-        `${form.name.trim()} added. They must verify ${form.phoneNumber.trim()} by OTP and enroll a fingerprint on their own device.`,
+        `${form.name.trim()} added. They must verify ${form.email.trim()} by email OTP and enroll a fingerprint on their own device.`,
       );
       setForm(EMPTY);
     } catch (err) {
@@ -85,21 +85,21 @@ export function AddStudentPage() {
           <FormField label="Room number">
             <TextInput value={form.roomNo} onChange={setField('roomNo')} className="bg-surface-container text-on-surface" />
           </FormField>
-          <FormField label="Primary phone number">
+          <FormField label="Primary email address">
             <TextInput
-              value={form.phoneNumber}
-              inputMode="tel"
-              placeholder="+91XXXXXXXXXX"
-              onChange={setField('phoneNumber')}
+              value={form.email}
+              type="email"
+              placeholder="student@example.com"
+              onChange={setField('email')}
               className="bg-surface-container text-on-surface"
             />
           </FormField>
-          <FormField label="Secondary contact number (used for fallback OTP)">
+          <FormField label="Secondary email address (used for fallback OTP)">
             <TextInput
-              value={form.secondaryContactNumber}
-              inputMode="tel"
-              placeholder="+91XXXXXXXXXX"
-              onChange={setField('secondaryContactNumber')}
+              value={form.secondaryEmail}
+              type="email"
+              placeholder="guardian@example.com"
+              onChange={setField('secondaryEmail')}
               className="bg-surface-container text-on-surface"
             />
           </FormField>

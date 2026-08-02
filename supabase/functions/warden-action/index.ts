@@ -194,11 +194,11 @@ Deno.serve(handler(async (req) => {
         name?: string;
         rollNumber?: string;
         roomNo?: string;
-        phoneNumber?: string;
-        secondaryContactNumber?: string;
+        email?: string;
+        secondaryEmail?: string;
       };
-      if (!input.name || !input.rollNumber || !input.roomNo || !input.phoneNumber) {
-        return fail('name, rollNumber, roomNo and phoneNumber are required');
+      if (!input.name || !input.rollNumber || !input.roomNo || !input.email) {
+        return fail('name, rollNumber, roomNo and email are required');
       }
 
       const { data, error } = await db
@@ -208,8 +208,8 @@ Deno.serve(handler(async (req) => {
           name: input.name.trim(),
           roll_number: input.rollNumber.trim(),
           room_no: input.roomNo.trim(),
-          phone_number: input.phoneNumber.trim(),
-          secondary_contact_number: input.secondaryContactNumber?.trim() || null,
+          email: input.email.trim(),
+          secondary_email: input.secondaryEmail?.trim() || null,
           onboarded_by: warden.id,
         })
         .select('id')
@@ -218,7 +218,7 @@ Deno.serve(handler(async (req) => {
       if (error) {
         return fail(
           error.code === '23505'
-            ? 'A student with that roll number or phone number already exists.'
+            ? 'A student with that roll number or email already exists.'
             : error.message,
         );
       }

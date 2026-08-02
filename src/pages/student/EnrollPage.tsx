@@ -51,7 +51,7 @@ export function EnrollPage({ session, onEnrolled }: EnrollPageProps) {
 
           {error && <AlertBanner type="error" message={error} />}
 
-          <Step index={1} title="Phone number verified" done={student.phoneVerified} />
+          <Step index={1} title="Email verified" done={student.phoneVerified} />
 
           <Step
             index={2}

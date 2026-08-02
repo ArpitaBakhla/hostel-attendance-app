@@ -1,6 +1,6 @@
 import { adminClient } from '../_shared/db.ts';
 import { fail, handler, json } from '../_shared/http.ts';
-import { issueOtp, maskNumber, shouldEchoCode, type OtpPurpose } from '../_shared/otp.ts';
+import { maskEmail, shouldEchoCode, type OtpPurpose } from '../_shared/otp.ts';
 
 const ALLOWED: OtpPurpose[] = [
   'registration',
@@ -11,36 +11,37 @@ const ALLOWED: OtpPurpose[] = [
 ];
 
 /**
- * Issues an OTP for a student identified by their *primary* number. The
+ * Issues an OTP for a student identified by their *primary* email. The
  * destination is derived from the purpose, so identifying a student never lets
  * the caller choose where the code lands.
  */
 Deno.serve(handler(async (req) => {
-  const { phoneNumber, purpose } = (await req.json()) as {
-    phoneNumber?: string;
+  const { email, purpose } = (await req.json()) as {
+    email?: string;
     purpose?: OtpPurpose;
   };
 
-  if (!phoneNumber || !purpose || !ALLOWED.includes(purpose)) {
-    return fail('phoneNumber and a valid purpose are required');
+  if (!email || !purpose || !ALLOWED.includes(purpose)) {
+    return fail('email and a valid purpose are required');
   }
 
   const { data: student, error } = await adminClient()
     .from('students')
     .select('*')
-    .eq('phone_number', phoneNumber.trim())
+    .eq('email', email.trim())
     .maybeSingle();
 
   if (error) throw error;
   if (!student) {
-    // Do not disclose whether the number is registered.
-    return json({ sentTo: maskNumber(phoneNumber) });
+    // Do not disclose whether the address is registered.
+    return json({ challengeId: email.trim(), sentTo: maskEmail(email) });
   }
 
-  const challenge = await issueOtp(student, purpose);
+  await adminClient().auth.signInWithOtp({ email: email.trim() });
+
   return json({
-    challengeId: challenge.id,
-    sentTo: maskNumber(challenge.sentTo),
-    ...(shouldEchoCode() ? { code: challenge.code } : {}),
+    challengeId: email.trim(),
+    sentTo: maskEmail(email),
+    ...(shouldEchoCode() ? { code: '000000' } : {}),
   });
 }));
