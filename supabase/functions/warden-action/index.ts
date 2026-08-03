@@ -87,6 +87,118 @@ Deno.serve(handler(async (req) => {
       return json({ marked: true, overrideCount: student.override_count + 1 });
     }
 
+    case 'mark-absent': {
+      if (!body.studentId) return fail('studentId is required');
+
+      const { data: student, error } = await db
+        .from('students')
+        .select('id, hostel_id')
+        .eq('id', body.studentId)
+        .eq('hostel_id', warden.hostel_id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!student) return fail('Student not found in your hostel.', 404);
+
+      const hostel = await getHostel(student.hostel_id);
+      const date = body.date ?? localDate(hostel.timezone);
+
+      const { error: logError } = await db.from('attendance_logs').upsert(
+        {
+          student_id: student.id,
+          hostel_id: student.hostel_id,
+          log_date: date,
+          timestamp: new Date().toISOString(),
+          status: 'absent',
+          fail_reason: body.reason?.trim() || null,
+          marked_by: warden.id,
+        },
+        { onConflict: 'student_id,log_date' },
+      );
+      if (logError) throw logError;
+
+      console.log(`[warden] MARK-ABSENT student=${body.studentId} by=${warden.id} ip=${clientIp}`);
+      return json({ marked: true });
+    }
+
+    case 'mark-late': {
+      if (!body.studentId) return fail('studentId is required');
+
+      const { data: student, error } = await db
+        .from('students')
+        .select('id, hostel_id, override_count')
+        .eq('id', body.studentId)
+        .eq('hostel_id', warden.hostel_id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!student) return fail('Student not found in your hostel.', 404);
+
+      const hostel = await getHostel(student.hostel_id);
+      const date = body.date ?? localDate(hostel.timezone);
+
+      const { error: logError } = await db.from('attendance_logs').upsert(
+        {
+          student_id: student.id,
+          hostel_id: student.hostel_id,
+          log_date: date,
+          timestamp: new Date().toISOString(),
+          status: 'late',
+          fail_reason: body.reason?.trim() || null,
+          marked_by: warden.id,
+        },
+        { onConflict: 'student_id,log_date' },
+      );
+      if (logError) throw logError;
+
+      // Frequent overrides/lates might be surfaced, we can increment override_count if we want, but late is typical
+      console.log(`[warden] MARK-LATE student=${body.studentId} by=${warden.id} ip=${clientIp}`);
+      return json({ marked: true });
+    }
+
+    case 'mark-all-present':
+    case 'mark-all-absent': {
+      const hostel = await getHostel(warden.hostel_id);
+      const date = body.date ?? localDate(hostel.timezone);
+      const targetStatus = body.action === 'mark-all-present' ? 'manual_override' : 'absent';
+
+      // Get all students for this hostel
+      const { data: students, error: studentsError } = await db
+        .from('students')
+        .select('id')
+        .eq('hostel_id', warden.hostel_id);
+      if (studentsError) throw studentsError;
+
+      // Get existing attendance logs for today
+      const { data: logs, error: logsError } = await db
+        .from('attendance_logs')
+        .select('student_id')
+        .eq('hostel_id', warden.hostel_id)
+        .eq('log_date', date);
+      if (logsError) throw logsError;
+
+      const checkedInStudentIds = new Set((logs || []).map(l => l.student_id));
+      const studentsToMark = (students || []).filter(s => !checkedInStudentIds.has(s.id));
+
+      if (studentsToMark.length > 0) {
+        const rows = studentsToMark.map(s => ({
+          student_id: s.id,
+          hostel_id: warden.hostel_id,
+          log_date: date,
+          timestamp: new Date().toISOString(),
+          status: targetStatus,
+          fail_reason: body.reason?.trim() || 'Bulk Action',
+          marked_by: warden.id,
+        }));
+
+        const { error: upsertError } = await db
+          .from('attendance_logs')
+          .upsert(rows, { onConflict: 'student_id,log_date' });
+        if (upsertError) throw upsertError;
+      }
+
+      console.log(`[warden] ${body.action.toUpperCase()} count=${studentsToMark.length} by=${warden.id} ip=${clientIp}`);
+      return json({ markedCount: studentsToMark.length });
+    }
+
     case 'review-malfunction': {
       if (!body.requestId || !body.decision) return fail('requestId and decision are required');
 

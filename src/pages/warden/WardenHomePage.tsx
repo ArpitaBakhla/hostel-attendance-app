@@ -23,6 +23,27 @@ interface WardenHomePageProps {
 export function WardenHomePage({ session, onSignOut }: WardenHomePageProps) {
   const hostelId = session.hostel.id;
   const today = hostelToday(session.hostel.timezone);
+  
+  // Calculate if it's past 9:00 PM for the alert banner
+  const [isPastDeadline, setIsPastDeadline] = useState(false);
+  useEffect(() => {
+    const checkTime = () => {
+      const now = new Date();
+      const options: Intl.DateTimeFormatOptions = { timeZone: session.hostel.timezone, hour: 'numeric', minute: 'numeric', hour12: false };
+      const formatter = new Intl.DateTimeFormat('en-US', options);
+      const parts = formatter.formatToParts(now);
+      const hourStr = parts.find(p => p.type === 'hour')?.value;
+      const minStr = parts.find(p => p.type === 'minute')?.value;
+      if (hourStr && minStr) {
+        const h = parseInt(hourStr, 10);
+        // Past 9:00 PM (21:00)
+        setIsPastDeadline(h >= 21);
+      }
+    };
+    checkTime();
+    const interval = setInterval(checkTime, 60000);
+    return () => clearInterval(interval);
+  }, [session.hostel.timezone]);
 
   const [students, setStudents] = useState<Student[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
@@ -83,6 +104,30 @@ export function WardenHomePage({ session, onSignOut }: WardenHomePageProps) {
     return run(() => api.markPresent(student.id, reason.trim()));
   };
 
+  const handleMarkAbsent = (student: Student) => {
+    if (confirm(`Mark ${student.name} absent?`)) {
+      return run(() => api.markAbsent(student.id, 'Marked by warden'));
+    }
+  };
+
+  const handleMarkLate = (student: Student) => {
+    if (confirm(`Mark ${student.name} late?`)) {
+      return run(() => api.markLate(student.id, 'Marked by warden'));
+    }
+  };
+
+  const handleMarkAllPresent = () => {
+    const reason = window.prompt('Reason for marking ALL remaining students PRESENT:');
+    if (!reason?.trim()) return;
+    return run(() => api.markAllPresent(reason.trim()));
+  };
+
+  const handleMarkAllAbsent = () => {
+    if (confirm('Are you sure you want to mark ALL remaining students ABSENT?')) {
+      return run(() => api.markAllAbsent());
+    }
+  };
+
   return (
     <PageShell>
       <main className="flex flex-grow flex-col gap-[var(--spacing-stack-lg)] px-[var(--spacing-container-margin-mobile)] py-8">
@@ -113,6 +158,9 @@ export function WardenHomePage({ session, onSignOut }: WardenHomePageProps) {
         </header>
 
         {error && <AlertBanner type="error" message={error} />}
+        {isPastDeadline && counts.success + counts.failed + counts.override + counts.onLeave < students.length && (
+          <AlertBanner type="error" message="It is past 9:00 PM and some students have not checked in. Please review the roll." />
+        )}
 
         <div className="grid grid-cols-4 gap-3">
           <Stat label="Present" value={counts.success} />
@@ -208,6 +256,10 @@ export function WardenHomePage({ session, onSignOut }: WardenHomePageProps) {
         </Section>
 
         <Section title="Tonight's roll">
+          <div className="flex justify-end gap-2 px-4 py-2">
+            <SmallButton onClick={handleMarkAllPresent}>Mark all present</SmallButton>
+            <SmallButton onClick={handleMarkAllAbsent}>Mark all absent</SmallButton>
+          </div>
           {students.map((student) => {
             const log = logFor(student.id);
             return (
@@ -226,9 +278,13 @@ export function WardenHomePage({ session, onSignOut }: WardenHomePageProps) {
                     {log?.failReason ? ` · ${log.failReason}` : ''}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <StatusBadge status={log?.status ?? 'absent'} />
-                  <SmallButton onClick={() => handleMarkPresent(student)}>Mark present</SmallButton>
+                <div className="flex flex-col items-end gap-2">
+                  <StatusBadge status={log?.status ?? 'pending'} />
+                  <div className="flex gap-1">
+                    <SmallButton onClick={() => handleMarkPresent(student)}>P</SmallButton>
+                    <SmallButton onClick={() => handleMarkAbsent(student)}>A</SmallButton>
+                    <SmallButton onClick={() => handleMarkLate(student)}>L</SmallButton>
+                  </div>
                 </div>
               </Row>
             );

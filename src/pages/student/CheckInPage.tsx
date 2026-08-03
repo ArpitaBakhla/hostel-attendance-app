@@ -91,7 +91,7 @@ export function CheckInPage({ session }: CheckInPageProps) {
 
   return (
     <PageShell>
-      <TopAppBar profileLink="/student/settings" />
+      <TopAppBar showMenu />
 
       <main className="relative flex flex-grow flex-col items-center justify-center overflow-hidden px-[var(--spacing-container-margin-mobile)] pb-24 pt-24">
         <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">

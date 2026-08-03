@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FormField, GlassButton, GlassPanel, PageShell, TextInput } from '@/components/ui';
+import { FormField, GlassButton, GlassPanel, PageShell, PhoneInput } from '@/components/ui';
 import { OtpForm } from '@/components/OtpForm';
 import { api } from '@/lib/api';
 
@@ -24,11 +24,9 @@ export function StudentLoginPage() {
           {!submitted ? (
             <>
               <FormField label="Phone number">
-                <TextInput
+                <PhoneInput
                   value={phone}
-                  inputMode="tel"
-                  placeholder="+91XXXXXXXXXX"
-                  onChange={(event) => setPhone(event.target.value)}
+                  onChange={setPhone}
                   className="bg-surface-container text-on-surface"
                 />
               </FormField>

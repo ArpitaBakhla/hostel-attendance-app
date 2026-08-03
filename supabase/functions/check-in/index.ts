@@ -68,8 +68,33 @@ Deno.serve(handler(async (req) => {
       { onConflict: 'student_id,log_date' },
     );
     console.warn(`[check-in] FAILED student=${student.id} reason=${reason} ip=${clientIp}`);
+    console.warn(`[check-in] FAILED student=${student.id} reason=${reason} ip=${clientIp}`);
     return json({ success: false, failReason: reason, message }, 200);
   };
+
+  // --- Check existing attendance state ---
+  const { data: existingRecord } = await db
+    .from('attendance_logs')
+    .select('status')
+    .eq('student_id', student.id)
+    .eq('log_date', date)
+    .maybeSingle();
+
+  if (existingRecord) {
+    if (existingRecord.status === 'success' || existingRecord.status === 'manual_override') {
+      return json({ success: true, message: 'Already checked in for tonight.' }, 200);
+    }
+    if (existingRecord.status === 'on_leave') {
+      return json({ success: false, message: 'You are marked as on leave for tonight.' }, 200);
+    }
+    if (existingRecord.status === 'late') {
+      return json({ success: false, message: 'You have been marked as late for tonight.' }, 200);
+    }
+    if (existingRecord.status === 'excused') {
+      return json({ success: false, message: 'You have been excused for tonight.' }, 200);
+    }
+    // If status is 'failed' or 'absent', we can let them try to check in!
+  }
 
   // --- Handle offline sync requests ---
   if (body.step === 'offline-sync') {

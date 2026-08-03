@@ -45,7 +45,9 @@ interface StatusBadgeProps {
     | 'absent'
     | 'pending'
     | 'approved'
-    | 'rejected';
+    | 'rejected'
+    | 'late'
+    | 'excused';
 }
 
 const statusConfig = {
@@ -60,6 +62,8 @@ const statusConfig = {
   pending: { label: 'Pending', color: 'text-on-surface-variant bg-white/5 border-white/10' },
   approved: { label: 'Approved', color: 'text-emerald bg-emerald/10 border-emerald/30' },
   rejected: { label: 'Rejected', color: 'text-error bg-error/10 border-error/30' },
+  late: { label: 'Late', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' },
+  excused: { label: 'Excused', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' },
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {
@@ -116,6 +120,7 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
   );
 }
 
+export * from './PhoneInput';
 export function AlertBanner({
   type,
   message,

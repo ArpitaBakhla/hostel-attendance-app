@@ -7,6 +7,7 @@ import {
   GlassPanel,
   PageShell,
   TextInput,
+  PhoneInput,
 } from '@/components/ui';
 import { api } from '@/lib/api';
 
@@ -86,20 +87,16 @@ export function AddStudentPage() {
             <TextInput value={form.roomNo} onChange={setField('roomNo')} className="bg-surface-container text-on-surface" />
           </FormField>
           <FormField label="Primary phone number">
-            <TextInput
+            <PhoneInput
               value={form.phoneNumber}
-              inputMode="tel"
-              placeholder="+91XXXXXXXXXX"
-              onChange={setField('phoneNumber')}
+              onChange={(value) => setForm((prev) => ({ ...prev, phoneNumber: value }))}
               className="bg-surface-container text-on-surface"
             />
           </FormField>
           <FormField label="Secondary contact number (used for fallback OTP)">
-            <TextInput
+            <PhoneInput
               value={form.secondaryContactNumber}
-              inputMode="tel"
-              placeholder="+91XXXXXXXXXX"
-              onChange={setField('secondaryContactNumber')}
+              onChange={(value) => setForm((prev) => ({ ...prev, secondaryContactNumber: value }))}
               className="bg-surface-container text-on-surface"
             />
           </FormField>

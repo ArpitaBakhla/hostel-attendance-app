@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { CheckInPage } from '@/pages/student/CheckInPage';
 import { EnrollPage } from '@/pages/student/EnrollPage';
+import { HistoryPage } from '@/pages/student/HistoryPage';
+import { SettingsPage } from '@/pages/student/SettingsPage';
 import { MalfunctionPage } from '@/pages/student/MalfunctionPage';
 import { StudentLoginPage } from '@/pages/student/StudentLoginPage';
 import { AddStudentPage } from '@/pages/warden/AddStudentPage';
@@ -68,6 +70,14 @@ export default function App() {
             <Navigate to="/student/enroll" replace />
           ),
         )}
+      />
+      <Route
+        path="/student/history"
+        element={requireStudent(() => <HistoryPage />)}
+      />
+      <Route
+        path="/student/settings"
+        element={requireStudent(() => <SettingsPage />)}
       />
 
       <Route

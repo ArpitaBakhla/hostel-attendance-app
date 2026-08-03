@@ -331,6 +331,22 @@ export const api = {
     return callFunction('warden-action', { action: 'mark-present', studentId, reason, date });
   },
 
+  markAbsent(studentId: string, reason?: string, date?: string): Promise<{ marked: boolean }> {
+    return callFunction('warden-action', { action: 'mark-absent', studentId, reason, date });
+  },
+
+  markLate(studentId: string, reason?: string, date?: string): Promise<{ marked: boolean }> {
+    return callFunction('warden-action', { action: 'mark-late', studentId, reason, date });
+  },
+
+  markAllPresent(reason?: string, date?: string): Promise<{ markedCount: number }> {
+    return callFunction('warden-action', { action: 'mark-all-present', reason, date });
+  },
+
+  markAllAbsent(reason?: string, date?: string): Promise<{ markedCount: number }> {
+    return callFunction('warden-action', { action: 'mark-all-absent', reason, date });
+  },
+
   reviewLeave(requestId: string, decision: 'approved' | 'rejected'): Promise<unknown> {
     return callFunction('warden-action', { action: 'review-leave', requestId, decision });
   },
@@ -392,6 +408,7 @@ function toStudent(row: Row): Student {
     overrideCount: row.override_count as number,
     onboardedBy: (row.onboarded_by as string) ?? undefined,
     phoneVerified: row.phone_verified as boolean,
+    hideHistoryLocal: (row.hide_history_local as boolean) ?? false,
   };
 }
 

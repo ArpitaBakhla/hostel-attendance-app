@@ -1,7 +1,7 @@
 export type UserRole = 'student' | 'warden' | 'super_admin';
 
 /** attendance_logs.status */
-export type AttendanceStatus = 'success' | 'failed' | 'manual_override' | 'on_leave';
+export type AttendanceStatus = 'success' | 'failed' | 'manual_override' | 'on_leave' | 'absent' | 'late' | 'excused';
 
 export type LeaveStatus = 'pending' | 'approved' | 'rejected';
 
@@ -42,6 +42,7 @@ export interface Student {
   overrideCount: number;
   onboardedBy?: string;
   phoneVerified: boolean;
+  hideHistoryLocal?: boolean;
 }
 
 /** attendance_logs */
