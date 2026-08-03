@@ -13,11 +13,15 @@ const MAX_BODY_SIZE = 16 * 1024; // 16 KB
 
 // ---------------------------------------------------------------- CORS
 
-export const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+export function corsHeaders(req?: Request): Record<string, string> {
+  const allowed = Deno.env.get('ALLOWED_ORIGIN');
+  const origin = req?.headers.get('Origin') || '*';
+  return {
+    'Access-Control-Allow-Origin': allowed ? allowed : origin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+}
 
 // ---------------------------------------------------------------- Security headers
 
@@ -33,25 +37,25 @@ const securityHeaders: Record<string, string> = {
   'Pragma': 'no-cache',
 };
 
-function allHeaders(): Record<string, string> {
-  return { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' };
+function allHeaders(req?: Request): Record<string, string> {
+  return { ...corsHeaders(req), ...securityHeaders, 'Content-Type': 'application/json' };
 }
 
 // ---------------------------------------------------------------- Response helpers
 
-export function json(body: unknown, status = 200): Response {
+export function json(body: unknown, status = 200, req?: Request): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: allHeaders(),
+    headers: allHeaders(req),
   });
 }
 
-export function fail(message: string, status = 400, extra: Record<string, unknown> = {}): Response {
-  return json({ error: message, ...extra }, status);
+export function fail(message: string, status = 400, extra: Record<string, unknown> = {}, req?: Request): Response {
+  return json({ error: message, ...extra }, status, req);
 }
 
 export function preflight(req: Request): Response | null {
-  return req.method === 'OPTIONS' ? new Response('ok', { headers: corsHeaders }) : null;
+  return req.method === 'OPTIONS' ? new Response('ok', { headers: corsHeaders(req) }) : null;
 }
 
 // ---------------------------------------------------------------- Rate limiting
@@ -148,7 +152,7 @@ export function handler(fn: (req: Request) => Promise<Response>): (req: Request)
   return async (req) => {
     const pre = preflight(req);
     if (pre) return pre;
-    if (req.method !== 'POST') return fail('Method not allowed', 405);
+    if (req.method !== 'POST') return fail('Method not allowed', 405, {}, req);
 
     const clientIp = getClientIp(req);
 
@@ -166,7 +170,7 @@ export function handler(fn: (req: Request) => Promise<Response>): (req: Request)
           ? 'The operation violates a data constraint.'
           : message;
 
-      return fail(safeMessage, 500);
+      return fail(safeMessage, 500, {}, req);
     }
   };
 }

@@ -44,7 +44,7 @@ Deno.serve(handler(async (req) => {
   const hostel = await getHostel(student.hostel_id);
   const db = adminClient();
   const date = localDate(hostel.timezone);
-  const { rpID, origin } = rpConfig();
+  const { rpID, origin } = rpConfig(req);
   const clientIp = getClientIp(req);
 
   // Rate limiting: 10 check-in attempts per minute per student

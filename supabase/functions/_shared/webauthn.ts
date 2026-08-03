@@ -10,8 +10,10 @@
 
 import { adminClient } from './db.ts';
 
-export function rpConfig(): { rpID: string; origin: string } {
-  const origin = Deno.env.get('WEBAUTHN_ORIGIN') ?? 'http://localhost:5173';
+export function rpConfig(req: Request): { rpID: string; origin: string } {
+  const reqOrigin = req.headers.get('Origin');
+  const envOrigin = Deno.env.get('WEBAUTHN_ORIGIN');
+  const origin = reqOrigin || envOrigin || 'http://localhost:5173';
   const rpID = Deno.env.get('WEBAUTHN_RP_ID') ?? new URL(origin).hostname;
   return { rpID, origin };
 }

@@ -26,10 +26,12 @@ export async function callFunction<T>(name: string, body: Record<string, unknown
   const { data, error } = await supabase().functions.invoke(name, { body });
 
   if (error) {
-    const context = (error as { context?: Response }).context;
-    if (context) {
+    const context = (error as any).context;
+    if (context && typeof context.json === 'function') {
       const payload = await context.json().catch(() => null);
       if (payload?.error) throw new Error(payload.error);
+    } else if (context && typeof context === 'object' && context.error) {
+       throw new Error(context.error);
     }
     throw error;
   }
