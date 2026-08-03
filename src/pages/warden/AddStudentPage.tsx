@@ -15,6 +15,7 @@ const EMPTY = {
   name: '',
   rollNumber: '',
   roomNo: '',
+  email: '',
   phoneNumber: '',
   secondaryContactNumber: '',
 };
@@ -40,6 +41,7 @@ export function AddStudentPage() {
         name: form.name.trim(),
         rollNumber: form.rollNumber.trim(),
         roomNo: form.roomNo.trim(),
+        email: form.email.trim() || undefined,
         phoneNumber: form.phoneNumber.trim(),
         secondaryContactNumber: form.secondaryContactNumber.trim() || undefined,
       });
@@ -73,37 +75,48 @@ export function AddStudentPage() {
           {error && <AlertBanner type="error" message={error} />}
           {success && <AlertBanner type="success" message={success} />}
 
-          <FormField label="Full name">
-            <TextInput value={form.name} onChange={setField('name')} className="bg-surface-container text-on-surface" />
-          </FormField>
-          <FormField label="Roll number">
-            <TextInput
-              value={form.rollNumber}
-              onChange={setField('rollNumber')}
-              className="bg-surface-container text-on-surface"
-            />
-          </FormField>
-          <FormField label="Room number">
-            <TextInput value={form.roomNo} onChange={setField('roomNo')} className="bg-surface-container text-on-surface" />
-          </FormField>
-          <FormField label="Primary phone number">
-            <PhoneInput
-              value={form.phoneNumber}
-              onChange={(value) => setForm((prev) => ({ ...prev, phoneNumber: value }))}
-              className="bg-surface-container text-on-surface"
-            />
-          </FormField>
-          <FormField label="Secondary contact number (used for fallback OTP)">
-            <PhoneInput
-              value={form.secondaryContactNumber}
-              onChange={(value) => setForm((prev) => ({ ...prev, secondaryContactNumber: value }))}
-              className="bg-surface-container text-on-surface"
-            />
-          </FormField>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSubmit();
+            }}
+            className="flex flex-col gap-[var(--spacing-stack-sm)]"
+          >
+            <FormField label="Full name">
+              <TextInput value={form.name} onChange={setField('name')} className="bg-surface-container text-on-surface" />
+            </FormField>
+            <FormField label="Roll number">
+              <TextInput
+                value={form.rollNumber}
+                onChange={setField('rollNumber')}
+                className="bg-surface-container text-on-surface"
+              />
+            </FormField>
+            <FormField label="Room number">
+              <TextInput value={form.roomNo} onChange={setField('roomNo')} className="bg-surface-container text-on-surface" />
+            </FormField>
+            <FormField label="Email address">
+              <TextInput value={form.email} type="email" onChange={setField('email')} className="bg-surface-container text-on-surface" />
+            </FormField>
+            <FormField label="Primary phone number">
+              <PhoneInput
+                value={form.phoneNumber}
+                onChange={(value) => setForm((prev) => ({ ...prev, phoneNumber: value }))}
+                className="bg-surface-container text-on-surface"
+              />
+            </FormField>
+            <FormField label="Secondary contact number (used for fallback OTP)">
+              <PhoneInput
+                value={form.secondaryContactNumber}
+                onChange={(value) => setForm((prev) => ({ ...prev, secondaryContactNumber: value }))}
+                className="bg-surface-container text-on-surface"
+              />
+            </FormField>
 
-          <GlassButton onClick={handleSubmit} disabled={!complete || busy}>
-            {busy ? 'Adding…' : 'Add student'}
-          </GlassButton>
+            <GlassButton type="submit" disabled={!complete || busy} className="mt-4">
+              {busy ? 'Adding…' : 'Add student'}
+            </GlassButton>
+          </form>
         </GlassPanel>
       </main>
     </PageShell>

@@ -22,7 +22,13 @@ export function StudentLoginPage() {
           </div>
 
           {!submitted ? (
-            <>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setSubmitted(true);
+              }}
+              className="flex flex-col gap-[var(--spacing-stack-md)]"
+            >
               <FormField label="Phone number">
                 <PhoneInput
                   value={phone}
@@ -30,10 +36,10 @@ export function StudentLoginPage() {
                   className="bg-surface-container text-on-surface"
                 />
               </FormField>
-              <GlassButton onClick={() => setSubmitted(true)} disabled={!phone.trim()}>
+              <GlassButton type="submit" disabled={!phone.trim()}>
                 Continue
               </GlassButton>
-            </>
+            </form>
           ) : (
             <OtpForm
               phoneNumber={phone.trim()}

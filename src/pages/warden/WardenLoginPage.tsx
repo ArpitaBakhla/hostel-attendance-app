@@ -36,26 +36,34 @@ export function WardenLoginPage() {
 
           {error && <AlertBanner type="error" message={error} />}
 
-          <FormField label="Email">
-            <TextInput
-              value={email}
-              type="email"
-              onChange={(event) => setEmail(event.target.value)}
-              className="bg-surface-container text-on-surface"
-            />
-          </FormField>
-          <FormField label="Password">
-            <TextInput
-              value={password}
-              type="password"
-              onChange={(event) => setPassword(event.target.value)}
-              className="bg-surface-container text-on-surface"
-            />
-          </FormField>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleLogin();
+            }}
+            className="flex flex-col gap-[var(--spacing-stack-md)]"
+          >
+            <FormField label="Email">
+              <TextInput
+                value={email}
+                type="email"
+                onChange={(event) => setEmail(event.target.value)}
+                className="bg-surface-container text-on-surface"
+              />
+            </FormField>
+            <FormField label="Password">
+              <TextInput
+                value={password}
+                type="password"
+                onChange={(event) => setPassword(event.target.value)}
+                className="bg-surface-container text-on-surface"
+              />
+            </FormField>
 
-          <GlassButton onClick={handleLogin} disabled={busy || !email.trim() || !password}>
-            {busy ? 'Signing in…' : 'Sign in'}
-          </GlassButton>
+            <GlassButton type="submit" disabled={busy || !email.trim() || !password}>
+              {busy ? 'Signing in…' : 'Sign in'}
+            </GlassButton>
+          </form>
 
           <Link
             to="/student/login"

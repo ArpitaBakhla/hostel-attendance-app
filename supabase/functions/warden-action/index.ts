@@ -326,6 +326,7 @@ Deno.serve(handler(async (req) => {
         rollNumber?: string;
         roomNo?: string;
         phoneNumber?: string;
+        email?: string;
         secondaryContactNumber?: string;
       };
       if (!input.name || !input.rollNumber || !input.roomNo || !input.phoneNumber) {
@@ -353,6 +354,7 @@ Deno.serve(handler(async (req) => {
           roll_number: input.rollNumber.trim(),
           room_no: input.roomNo.trim(),
           phone_number: input.phoneNumber.trim(),
+          email: input.email?.trim() || null,
           secondary_contact_number: input.secondaryContactNumber?.trim() || null,
           onboarded_by: warden.id,
           encrypted_phone: encryptedPhone,

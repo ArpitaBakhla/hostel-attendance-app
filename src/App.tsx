@@ -4,6 +4,7 @@ import { EnrollPage } from '@/pages/student/EnrollPage';
 import { HistoryPage } from '@/pages/student/HistoryPage';
 import { SettingsPage } from '@/pages/student/SettingsPage';
 import { MalfunctionPage } from '@/pages/student/MalfunctionPage';
+import { LeavePage } from '@/pages/student/LeavePage';
 import { StudentLoginPage } from '@/pages/student/StudentLoginPage';
 import { AddStudentPage } from '@/pages/warden/AddStudentPage';
 import { WardenHomePage } from '@/pages/warden/WardenHomePage';
@@ -78,6 +79,10 @@ export default function App() {
       <Route
         path="/student/settings"
         element={requireStudent(() => <SettingsPage />)}
+      />
+      <Route
+        path="/student/leave"
+        element={requireStudent((value) => <LeavePage session={value} />)}
       />
 
       <Route

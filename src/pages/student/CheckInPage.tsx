@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TopAppBar } from '@/components/student/TopAppBar';
-import { BottomNav } from '@/components/student/BottomNav';
 import { AlertBanner, PageShell } from '@/components/ui';
 import { api } from '@/lib/api';
 import { getCurrentPosition, haversineDistanceM } from '@/lib/geo';
@@ -21,12 +20,17 @@ function formatCountdown(totalSeconds: number): string {
   return hrs > 0 ? `${hrs}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
 }
 
+const isMobileDevice = () => {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
 export function CheckInPage({ session }: CheckInPageProps) {
   const { student, hostel } = session;
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(
     null,
   );
+  const [isMobile] = useState(() => isMobileDevice());
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [locationLabel, setLocationLabel] = useState('Checking location…');
   const [timeStatus, setTimeStatus] = useState(() => getTimeWindowStatus(new Date(), hostel.timezone));
@@ -58,7 +62,7 @@ export function CheckInPage({ session }: CheckInPageProps) {
     return () => clearInterval(interval);
   }, [refreshLocation, hostel.timezone]);
 
-  const handleCheckIn = async () => {
+  const handleCheckIn = async (isLateDeclaration = false) => {
     setLoading(true);
     setMessage(null);
 
@@ -71,6 +75,16 @@ export function CheckInPage({ session }: CheckInPageProps) {
       setPosition({ lat: current.coords.latitude, lng: current.coords.longitude });
 
       const result = await api.checkIn(current.coords.latitude, current.coords.longitude);
+      
+      if (!result.success) {
+        if (!isLateDeclaration && confirm(`Check-in failed: ${result.message}\n\nAre you coming late tonight? Click OK to mark yourself as late.`)) {
+           // We would ideally call api.markSelfLate() here if the backend supported it, but since
+           // the warden gets alerted for late students, we can show a message or call a malfunction report
+           setMessage({ type: 'info', text: 'You have chosen to mark yourself as late. Please inform your warden.' });
+           return;
+        }
+      }
+      
       setMessage({ type: result.success ? 'success' : 'error', text: result.message });
     } catch (error) {
       setMessage({
@@ -107,12 +121,16 @@ export function CheckInPage({ session }: CheckInPageProps) {
               {bannerMessage}
             </span>
           </div>
+          
+          {!isMobile && (
+            <AlertBanner type="error" message="Please use a mobile phone with a fingerprint scanner to mark attendance." />
+          )}
 
           <div className="my-[var(--spacing-stack-lg)] flex flex-col items-center gap-[var(--spacing-stack-sm)]">
             <button
               type="button"
-              onClick={handleCheckIn}
-              disabled={loading || !timeStatus.isOpen}
+              onClick={() => handleCheckIn(false)}
+              disabled={loading || (!timeStatus.isOpen && !isMobile)}
               className="embossed-disc group relative flex h-48 w-48 cursor-pointer items-center justify-center rounded-full p-4 transition-transform duration-300 active:scale-95 disabled:opacity-60"
             >
               <div className="absolute inset-0 animate-pulse-ring rounded-full border-2 border-emerald/20" />
@@ -168,8 +186,6 @@ export function CheckInPage({ session }: CheckInPageProps) {
           </p>
         </div>
       </main>
-
-      <BottomNav />
     </PageShell>
   );
 }

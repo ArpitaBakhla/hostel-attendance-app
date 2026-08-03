@@ -87,18 +87,25 @@ export function SettingsPage() {
               </h2>
               <div className="flex flex-col gap-4">
                 <FormField label="Full Name">
-                  <TextInput value={profile?.name} disabled className="opacity-50" />
+                  <TextInput value={profile?.name || ''} disabled className="opacity-50" />
                 </FormField>
                 <FormField label="Roll Number">
-                  <TextInput value={profile?.roll_number} disabled className="opacity-50" />
+                  <TextInput value={profile?.rollNumber || ''} disabled className="opacity-50" />
+                </FormField>
+                <FormField label="Email">
+                  <TextInput value={profile?.email || ''} disabled className="opacity-50" />
                 </FormField>
                 <FormField label="Phone Number">
                   <PhoneInput
                     value={phone}
-                    onChange={setPhone}
-                    className="bg-surface-container text-on-surface"
+                    onChange={() => {}}
+                    disabled
+                    className="bg-surface-container text-on-surface opacity-50"
                   />
                 </FormField>
+                <p className="text-xs text-on-surface-variant">
+                  * Contact your warden to update these registration details.
+                </p>
               </div>
             </GlassPanel>
 

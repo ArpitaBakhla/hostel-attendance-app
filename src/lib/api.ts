@@ -364,6 +364,7 @@ export const api = {
     rollNumber: string;
     roomNo: string;
     phoneNumber: string;
+    email?: string;
     secondaryContactNumber?: string;
   }): Promise<{ studentId: string }> {
     return callFunction('warden-action', { action: 'add-student', ...input });
@@ -402,6 +403,7 @@ function toStudent(row: Row): Student {
     roomNo: row.room_no as string,
     rollNumber: row.roll_number as string,
     phoneNumber: row.phone_number as string,
+    email: (row.email as string) ?? undefined,
     secondaryContactNumber: (row.secondary_contact_number as string) ?? undefined,
     registeredDeviceId: (row.registered_device_id as string) ?? undefined,
     webauthnCredentialId: (row.webauthn_credential_id as string) ?? undefined,

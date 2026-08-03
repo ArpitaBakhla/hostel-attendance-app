@@ -85,7 +85,12 @@ export function WardenHomePage({ session, onSignOut }: WardenHomePageProps) {
     failed: logs.filter((log) => log.status === 'failed').length,
     override: logs.filter((log) => log.status === 'manual_override').length,
     onLeave: logs.filter((log) => log.status === 'on_leave').length,
+    late: logs.filter((log) => log.status === 'late').length,
   };
+
+  const lateStudents = students.filter(
+    (student) => logFor(student.id)?.status === 'late'
+  );
 
   const run = async (action: () => Promise<unknown>) => {
     try {
@@ -162,12 +167,33 @@ export function WardenHomePage({ session, onSignOut }: WardenHomePageProps) {
           <AlertBanner type="error" message="It is past 9:00 PM and some students have not checked in. Please review the roll." />
         )}
 
-        <div className="grid grid-cols-4 gap-3">
-          <Stat label="Present" value={counts.success} />
+        <div className="grid grid-cols-5 gap-3">
+          <Stat label="Present" value={counts.success + counts.override} />
           <Stat label="Failed" value={counts.failed} />
-          <Stat label="Override" value={counts.override} />
+          <Stat label="Late" value={counts.late} />
           <Stat label="On leave" value={counts.onLeave} />
+          <Stat label="Absent" value={students.length - (counts.success + counts.override + counts.late + counts.onLeave)} />
         </div>
+
+        {lateStudents.length > 0 && (
+          <Section title={`Late Alerts (${lateStudents.length})`}>
+            {lateStudents.map((student) => (
+              <Row key={student.id}>
+                <div>
+                  <p className="text-sm font-bold text-amber-500">
+                    {student.name} · Room {student.roomNo}
+                  </p>
+                  <p className="text-xs text-on-surface-variant">Has marked themselves as coming late.</p>
+                </div>
+                <div className="flex gap-2">
+                  <SmallButton onClick={() => handleMarkPresent(student)}>
+                    Arrived
+                  </SmallButton>
+                </div>
+              </Row>
+            ))}
+          </Section>
+        )}
 
         <Section title={`Malfunction queue (${malfunctions.length})`}>
           {malfunctions.length === 0 ? (
@@ -279,7 +305,7 @@ export function WardenHomePage({ session, onSignOut }: WardenHomePageProps) {
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <StatusBadge status={log?.status ?? 'pending'} />
+                  <StatusBadge status={log?.status ?? (isPastDeadline ? 'absent' : 'pending')} />
                   <div className="flex gap-1">
                     <SmallButton onClick={() => handleMarkPresent(student)}>P</SmallButton>
                     <SmallButton onClick={() => handleMarkAbsent(student)}>A</SmallButton>

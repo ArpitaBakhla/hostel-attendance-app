@@ -45,7 +45,7 @@ export function TopAppBar({ title = 'NightCheck', showMenu = false }: TopAppBarP
             onClick={() => setMenuOpen(!menuOpen)}
             className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-surface-variant text-on-surface hover:bg-white/10"
           >
-            <span className="material-symbols-outlined">menu</span>
+            <span className="material-symbols-outlined text-[24px]">account_circle</span>
           </button>
 
           {menuOpen && (
@@ -57,7 +57,7 @@ export function TopAppBar({ title = 'NightCheck', showMenu = false }: TopAppBarP
                   className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-on-surface hover:bg-white/10"
                 >
                   <span className="material-symbols-outlined text-[20px]">home</span>
-                  Dashboard
+                  Home
                 </Link>
                 <Link
                   to="/student/history"
@@ -66,6 +66,14 @@ export function TopAppBar({ title = 'NightCheck', showMenu = false }: TopAppBarP
                 >
                   <span className="material-symbols-outlined text-[20px]">calendar_month</span>
                   History
+                </Link>
+                <Link
+                  to="/student/leave"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-on-surface hover:bg-white/10"
+                >
+                  <span className="material-symbols-outlined text-[20px]">event_busy</span>
+                  Request Leave
                 </Link>
                 <Link
                   to="/student/settings"

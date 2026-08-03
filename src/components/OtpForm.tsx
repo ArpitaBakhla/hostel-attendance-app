@@ -62,16 +62,28 @@ export function OtpForm({
       {error && <AlertBanner type="error" message={error} />}
 
       {!challenge ? (
-        <>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSend();
+          }}
+          className="flex flex-col gap-[var(--spacing-stack-sm)]"
+        >
           <p className="font-[family-name:var(--font-body-md)] text-sm text-on-surface-variant">
             {description}
           </p>
-          <GlassButton onClick={handleSend} disabled={busy}>
+          <GlassButton type="submit" disabled={busy}>
             {busy ? 'Sending…' : 'Send code'}
           </GlassButton>
-        </>
+        </form>
       ) : (
-        <>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleVerify();
+          }}
+          className="flex flex-col gap-[var(--spacing-stack-sm)]"
+        >
           <AlertBanner
             type="info"
             message={
@@ -90,7 +102,7 @@ export function OtpForm({
               className="bg-surface-container text-on-surface"
             />
           </FormField>
-          <GlassButton onClick={handleVerify} disabled={code.length !== 6 || busy}>
+          <GlassButton type="submit" disabled={code.length !== 6 || busy}>
             {busy ? 'Checking…' : submitLabel}
           </GlassButton>
           <button
@@ -101,7 +113,7 @@ export function OtpForm({
           >
             Resend code
           </button>
-        </>
+        </form>
       )}
     </div>
   );
