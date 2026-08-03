@@ -13,33 +13,60 @@
 -- ============================================================================
 
 -- ---------------------------------------------------------------- 1. CHECKSUMS
--- Generated columns that automatically compute an MD5 over critical fields.
--- Any silent corruption (bit-flip, partial write) will cause a checksum mismatch
--- when the row is next read and verified.
+-- Trigger-based checksums that compute an MD5 over critical fields on every
+-- INSERT and UPDATE. Using triggers instead of generated columns because
+-- PostgreSQL requires generated-column expressions to be IMMUTABLE, but
+-- uuid::text and timestamptz::text casts are only STABLE.
 
 alter table attendance_logs
-  add column if not exists row_checksum text generated always as (
-    md5(
-      coalesce(student_id::text, '') || '|' ||
-      coalesce(hostel_id::text, '') || '|' ||
-      coalesce(log_date::text, '') || '|' ||
-      coalesce(status::text, '') || '|' ||
-      coalesce(fail_reason, '') || '|' ||
-      coalesce(timestamp::text, '')
-    )
-  ) stored;
+  add column if not exists row_checksum text;
 
 alter table students
-  add column if not exists row_checksum text generated always as (
-    md5(
-      coalesce(id::text, '') || '|' ||
-      coalesce(name, '') || '|' ||
-      coalesce(roll_number, '') || '|' ||
-      coalesce(phone_number, '') || '|' ||
-      coalesce(registered_device_id, '') || '|' ||
-      coalesce(webauthn_credential_id, '')
-    )
-  ) stored;
+  add column if not exists row_checksum text;
+
+-- Trigger function: compute checksum for attendance_logs
+create or replace function compute_attendance_checksum()
+returns trigger
+language plpgsql
+as $$
+begin
+  NEW.row_checksum := md5(
+    coalesce(NEW.student_id::text, '') || '|' ||
+    coalesce(NEW.hostel_id::text, '') || '|' ||
+    coalesce(NEW.log_date::text, '') || '|' ||
+    coalesce(NEW.status::text, '') || '|' ||
+    coalesce(NEW.fail_reason, '') || '|' ||
+    coalesce(NEW.timestamp::text, '')
+  );
+  return NEW;
+end;
+$$;
+
+create trigger trg_attendance_checksum
+  before insert or update on attendance_logs
+  for each row execute function compute_attendance_checksum();
+
+-- Trigger function: compute checksum for students
+create or replace function compute_student_checksum()
+returns trigger
+language plpgsql
+as $$
+begin
+  NEW.row_checksum := md5(
+    coalesce(NEW.id::text, '') || '|' ||
+    coalesce(NEW.name, '') || '|' ||
+    coalesce(NEW.roll_number, '') || '|' ||
+    coalesce(NEW.phone_number, '') || '|' ||
+    coalesce(NEW.registered_device_id, '') || '|' ||
+    coalesce(NEW.webauthn_credential_id, '')
+  );
+  return NEW;
+end;
+$$;
+
+create trigger trg_student_checksum
+  before insert or update on students
+  for each row execute function compute_student_checksum();
 
 
 -- ---------------------------------------------------------------- 2. OPTIMISTIC CONCURRENCY
