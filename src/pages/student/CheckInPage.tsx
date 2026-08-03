@@ -130,7 +130,7 @@ export function CheckInPage({ session }: CheckInPageProps) {
             <button
               type="button"
               onClick={() => handleCheckIn(false)}
-              disabled={loading || (!timeStatus.isOpen && !isMobile)}
+              disabled={loading || !isMobile || (timeStatus.secondsRemaining !== undefined && !timeStatus.isOpen)}
               className="embossed-disc group relative flex h-48 w-48 cursor-pointer items-center justify-center rounded-full p-4 transition-transform duration-300 active:scale-95 disabled:opacity-60"
             >
               <div className="absolute inset-0 animate-pulse-ring rounded-full border-2 border-emerald/20" />
